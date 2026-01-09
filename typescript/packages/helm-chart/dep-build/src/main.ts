@@ -19,6 +19,9 @@ export async function run(): Promise<void> {
     let helmChartListingFileContent: string = utilsHelmChart.getListingFileContent(pathGitRepository)
 
     let helmChartListingYamlDoc = new yaml.Document(yaml.parse(helmChartListingFileContent))
+
+    // Get parallel input (default: false to maintain backward compatibility)
+    const parallelInput = core.getInput('parallel').toLowerCase() === 'true'
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     core.startGroup('Helm Dependency Update')
 
@@ -32,19 +35,46 @@ export async function run(): Promise<void> {
 
     core.summary.addHeading('Helm Chart Dependency Update Results').addRaw(summaryRawContent)
 
-    for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
-      let yamlitem = utils.unrapYamlbyKey(helmChartListingYamlDoc, item)
-      let listingYamlDir = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.dir)
-      let listingYamlRelativePath = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.relativePath)
-      let dir: path.ParsedPath = path.parse(listingYamlDir)
+    const helmChartKeys = Object.keys(helmChartListingYamlDoc.toJSON())
 
-      if (utils.isFunctionEnabled(dir, constants.Functionality.helmChartDependencyUpdate, true)) {
-        await utilsHelmChart.DependencyUpdate(dir)
-        tableRows.push([item, '✅', listingYamlRelativePath])
-      } else {
-        tableRows.push([item, ':heavy_exclamation_mark:', listingYamlRelativePath])
+    if (parallelInput) {
+      core.info('Running helm dependency update in parallel mode')
+
+      // Parallel execution using Promise.all
+      const promises = helmChartKeys.map(async (item) => {
+        let yamlitem = utils.unrapYamlbyKey(helmChartListingYamlDoc, item)
+        let listingYamlDir = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.dir)
+        let listingYamlRelativePath = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.relativePath)
+        let dir: path.ParsedPath = path.parse(listingYamlDir)
+
+        if (utils.isFunctionEnabled(dir, constants.Functionality.helmChartDependencyUpdate, true)) {
+          await utilsHelmChart.DependencyUpdate(dir)
+          return [item, '✅', listingYamlRelativePath]
+        } else {
+          return [item, ':heavy_exclamation_mark:', listingYamlRelativePath]
+        }
+      })
+
+      tableRows = await Promise.all(promises)
+    } else {
+      core.info('Running helm dependency update in sequential mode')
+
+      // Sequential execution (original behavior)
+      for (const item of helmChartKeys) {
+        let yamlitem = utils.unrapYamlbyKey(helmChartListingYamlDoc, item)
+        let listingYamlDir = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.dir)
+        let listingYamlRelativePath = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.relativePath)
+        let dir: path.ParsedPath = path.parse(listingYamlDir)
+
+        if (utils.isFunctionEnabled(dir, constants.Functionality.helmChartDependencyUpdate, true)) {
+          await utilsHelmChart.DependencyUpdate(dir)
+          tableRows.push([item, '✅', listingYamlRelativePath])
+        } else {
+          tableRows.push([item, ':heavy_exclamation_mark:', listingYamlRelativePath])
+        }
       }
     }
+
     await core.summary
       .addTable([tableHeader, ...tableRows])
       .addBreak()

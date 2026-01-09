@@ -66616,6 +66616,8 @@ async function run() {
         let utilsHelmChart = dist_1.utils.HelmChart.getInstance();
         let helmChartListingFileContent = utilsHelmChart.getListingFileContent(pathGitRepository);
         let helmChartListingYamlDoc = new yaml.Document(yaml.parse(helmChartListingFileContent));
+        // Get parallel input (default: false to maintain backward compatibility)
+        const parallelInput = core.getInput('parallel').toLowerCase() === 'true';
         ///////////////////////////////////////////////////////////////////////////////////////////////////
         core.startGroup('Helm Dependency Update');
         let tableRows = [];
@@ -66626,17 +66628,40 @@ async function run() {
         ];
         let summaryRawContent = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>';
         core.summary.addHeading('Helm Chart Dependency Update Results').addRaw(summaryRawContent);
-        for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
-            let yamlitem = dist_1.utils.unrapYamlbyKey(helmChartListingYamlDoc, item);
-            let listingYamlDir = dist_1.utils.unrapYamlbyKey(yamlitem, dist_1.constants.ListingYamlKeys.dir);
-            let listingYamlRelativePath = dist_1.utils.unrapYamlbyKey(yamlitem, dist_1.constants.ListingYamlKeys.relativePath);
-            let dir = path.parse(listingYamlDir);
-            if (dist_1.utils.isFunctionEnabled(dir, dist_1.constants.Functionality.helmChartDependencyUpdate, true)) {
-                await utilsHelmChart.DependencyUpdate(dir);
-                tableRows.push([item, '✅', listingYamlRelativePath]);
-            }
-            else {
-                tableRows.push([item, ':heavy_exclamation_mark:', listingYamlRelativePath]);
+        const helmChartKeys = Object.keys(helmChartListingYamlDoc.toJSON());
+        if (parallelInput) {
+            core.info('Running helm dependency update in parallel mode');
+            // Parallel execution using Promise.all
+            const promises = helmChartKeys.map(async (item) => {
+                let yamlitem = dist_1.utils.unrapYamlbyKey(helmChartListingYamlDoc, item);
+                let listingYamlDir = dist_1.utils.unrapYamlbyKey(yamlitem, dist_1.constants.ListingYamlKeys.dir);
+                let listingYamlRelativePath = dist_1.utils.unrapYamlbyKey(yamlitem, dist_1.constants.ListingYamlKeys.relativePath);
+                let dir = path.parse(listingYamlDir);
+                if (dist_1.utils.isFunctionEnabled(dir, dist_1.constants.Functionality.helmChartDependencyUpdate, true)) {
+                    await utilsHelmChart.DependencyUpdate(dir);
+                    return [item, '✅', listingYamlRelativePath];
+                }
+                else {
+                    return [item, ':heavy_exclamation_mark:', listingYamlRelativePath];
+                }
+            });
+            tableRows = await Promise.all(promises);
+        }
+        else {
+            core.info('Running helm dependency update in sequential mode');
+            // Sequential execution (original behavior)
+            for (const item of helmChartKeys) {
+                let yamlitem = dist_1.utils.unrapYamlbyKey(helmChartListingYamlDoc, item);
+                let listingYamlDir = dist_1.utils.unrapYamlbyKey(yamlitem, dist_1.constants.ListingYamlKeys.dir);
+                let listingYamlRelativePath = dist_1.utils.unrapYamlbyKey(yamlitem, dist_1.constants.ListingYamlKeys.relativePath);
+                let dir = path.parse(listingYamlDir);
+                if (dist_1.utils.isFunctionEnabled(dir, dist_1.constants.Functionality.helmChartDependencyUpdate, true)) {
+                    await utilsHelmChart.DependencyUpdate(dir);
+                    tableRows.push([item, '✅', listingYamlRelativePath]);
+                }
+                else {
+                    tableRows.push([item, ':heavy_exclamation_mark:', listingYamlRelativePath]);
+                }
             }
         }
         await core.summary

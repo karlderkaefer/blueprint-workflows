@@ -6,6 +6,12 @@ branding:
   icon: 'heart'
   color: 'red'
 
+inputs:
+  parallel:
+    description: 'Enable parallel execution of helm dependency update (default: false)'
+    required: false
+    default: 'false'
+
 runs:
   using: node20
   main: ../../../../typescript/packages/helm-chart/dep-build/dist/index.js
