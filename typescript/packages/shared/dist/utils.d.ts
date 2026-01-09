@@ -42,7 +42,10 @@ export declare class HelmChart {
      *
      */
     getHelmValueFiles(dir: path.ParsedPath): string;
-    DependencyUpdate(dir: path.ParsedPath): Promise<string>;
+    DependencyUpdate(dir: path.ParsedPath, options?: {
+        skipRefresh?: boolean;
+        maxRetries?: number;
+    }): Promise<string>;
     lint(dir: path.ParsedPath, options?: string[]): Promise<string>;
     /**
      * Reads a specific feature section from a YAML configuration file for a given function name and feature name.

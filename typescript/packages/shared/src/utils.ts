@@ -317,14 +317,42 @@ export class HelmChart {
     }
     return helmValueFiles
   }
-  public async DependencyUpdate(dir: path.ParsedPath) {
-    let cmdExec = 'helm dependency update ' + path.format(dir)
+  public async DependencyUpdate(dir: path.ParsedPath, options?: { skipRefresh?: boolean; maxRetries?: number }) {
+    const skipRefresh = options?.skipRefresh ?? true // Default: true to avoid race conditions
+    const maxRetries = options?.maxRetries ?? 3
 
-    let result: exec2.ExecOutput = await this.exec(cmdExec, [])
-    if (result.exitCode !== 0) {
-      throw new Error(this.DependencyUpdate.name + '() failed with exit code: ' + result.exitCode)
+    const skipRefreshFlag = skipRefresh ? '--skip-refresh' : ''
+    const cmdExec = `helm dependency update ${skipRefreshFlag} ${path.format(dir)}`.trim()
+
+    let lastError: Error | null = null
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const result: exec2.ExecOutput = await this.exec(cmdExec, [])
+
+        if (result.exitCode === 0) {
+          if (attempt > 1) {
+            core.info(`DependencyUpdate succeeded on attempt ${attempt} for ${path.format(dir)}`)
+          }
+          return result.stdout
+        }
+
+        lastError = new Error(`Exit code: ${result.exitCode}`)
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+      }
+
+      if (attempt < maxRetries) {
+        const delayMs = Math.pow(2, attempt) * 1000 // 2s, 4s exponential backoff
+        core.warning(
+          `DependencyUpdate attempt ${attempt}/${maxRetries} failed for ${path.format(dir)}: ${lastError.message}. ` +
+            `Retrying in ${delayMs}ms...`
+        )
+        await new Promise(resolve => setTimeout(resolve, delayMs))
+      }
     }
-    return result.stdout
+
+    throw new Error(`${this.DependencyUpdate.name}() failed after ${maxRetries} attempts for ${path.format(dir)}: ${lastError?.message}`)
   }
   public async lint(dir: path.ParsedPath, options?: string[]) {
     let helmValueFiles = this.getHelmValueFiles(dir)
