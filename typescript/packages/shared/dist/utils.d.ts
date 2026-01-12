@@ -37,7 +37,7 @@ export declare class HelmChart {
     /**
      * template
      */
-    template(dir: path.ParsedPath, valueFiles: string, options?: string[]): Promise<string>;
+    template(dir: path.ParsedPath, valueFiles: string, options?: string[], ignoreWarnings?: boolean): Promise<string>;
     /**
      *
      */
