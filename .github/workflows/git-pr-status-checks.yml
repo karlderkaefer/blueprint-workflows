@@ -57,6 +57,12 @@ jobs:
             
       - id: helm-chart-listing
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/listing@main"
+        # To enable changed-only listing (recommended for large repos with 40+ charts):
+        # This will significantly speed up dep-build and all subsequent actions
+        # with:
+        #   LIST_CHANGED_ONLY: 'true'
+        #   BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+        #   BASE_BRANCH_NAME: ${{ github.event.pull_request.base.ref }}
 
       - id: kustomize-listing
         uses: "openmcp-project/blueprint-workflows/.github/actions/kustomize/listing@main"
