@@ -94,6 +94,137 @@ export function isFileFoundInPath(file: string, dir: path.FormatInputPathObject,
   return isFileFoundInPath(file, path.parse(path.dirname(path.format(dir))), cwd)
 }
 
+/**
+ * Detect which Helm chart directories have been modified by comparing current branch with base branch
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @returns Set of chart directory paths that have been modified
+ */
+export async function detectChangedHelmChartDirs(
+  pathGitRepository: path.FormatInputPathObject,
+  branchName?: string,
+  baseBranchName: string = 'main'
+): Promise<Set<string>> {
+  const utilsHelmChart = HelmChart.getInstance()
+  const workspace = path.format(pathGitRepository)
+
+  if (!branchName) {
+    console.log('BRANCH_NAME not provided, returning empty set')
+    return new Set()
+  }
+
+  try {
+    // Fetch the base branch to ensure we have the latest
+    console.log(`Fetching base branch: ${baseBranchName}`)
+    await utilsHelmChart.exec(`git fetch origin ${baseBranchName}:refs/remotes/origin/${baseBranchName}`, [], { cwd: workspace })
+
+    // Compare HEAD (current PR branch) with base branch
+    const result = await utilsHelmChart.exec(`git diff --name-only "origin/${baseBranchName}...HEAD"`, [], { cwd: workspace })
+    return findChartDirsFromChangedFiles(result.stdout, pathGitRepository)
+  } catch (error) {
+    console.error('Failed to detect changed Helm charts:', error)
+    return new Set()
+  }
+}
+
+/**
+ * Helper function to find chart directories from a list of changed files
+ */
+function findChartDirsFromChangedFiles(changedFilesOutput: string, pathGitRepository: path.FormatInputPathObject): Set<string> {
+  const changedFiles = changedFilesOutput.split('\n').filter(f => f.trim() !== '')
+  console.log(`Found ${changedFiles.length} changed file(s)`)
+
+  const changedChartDirs = new Set<string>()
+
+  for (const filePath of changedFiles) {
+    // Check if this is a Chart.yaml file being deleted
+    if (filePath.endsWith(constants.HelmChartFiles.Chartyaml)) {
+      // For deleted Chart.yaml files, extract the directory path directly
+      const chartDir = path.dirname(filePath)
+      changedChartDirs.add(path.resolve(path.format(pathGitRepository), chartDir))
+      console.log(`Detected deleted/modified chart: ${chartDir}`)
+      continue
+    }
+
+    // For other files, walk up to find Chart.yaml in current filesystem
+    const chartDir = isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(filePath), pathGitRepository)
+    if (chartDir !== false) {
+      changedChartDirs.add(String(chartDir))
+      console.log(`Detected change in chart directory: ${chartDir}`)
+    }
+  }
+
+  return changedChartDirs
+}
+
+/**
+ * Detect which Kustomize project directories have been modified by comparing current branch with base branch
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @returns Set of kustomize project directory paths that have been modified
+ */
+export async function detectChangedKustomizeDirs(pathGitRepository: path.FormatInputPathObject, branchName?: string, baseBranchName: string = 'main'): Promise<Set<string>> {
+  const utilsKustomize = Kustomize.getInstance()
+  const workspace = path.format(pathGitRepository)
+
+  if (!branchName) {
+    console.log('BRANCH_NAME not provided, returning empty set')
+    return new Set()
+  }
+
+  try {
+    // Fetch the base branch to ensure we have the latest
+    console.log(`Fetching base branch: ${baseBranchName}`)
+    await utilsKustomize.exec(`git fetch origin ${baseBranchName}:refs/remotes/origin/${baseBranchName}`, [], { cwd: workspace })
+
+    // Compare HEAD (current PR branch) with base branch
+    const result = await utilsKustomize.exec(`git diff --name-only "origin/${baseBranchName}...HEAD"`, [], { cwd: workspace })
+    return findKustomizeDirsFromChangedFiles(result.stdout, pathGitRepository)
+  } catch (error) {
+    console.error('Failed to detect changed Kustomize projects:', error)
+    return new Set()
+  }
+}
+
+/**
+ * Helper function to find kustomize project directories from a list of changed files
+ */
+function findKustomizeDirsFromChangedFiles(changedFilesOutput: string, pathGitRepository: path.FormatInputPathObject): Set<string> {
+  const changedFiles = changedFilesOutput.split('\n').filter(f => f.trim() !== '')
+  console.log(`Found ${changedFiles.length} changed file(s)`)
+
+  const changedKustomizeDirs = new Set<string>()
+
+  for (const filePath of changedFiles) {
+    // Check if this is a kustomization.yaml or kustomization.yml file being deleted
+    if (filePath.endsWith(constants.KustomizeFiles.KustomizationYaml) || filePath.endsWith(constants.KustomizeFiles.KustomizationYml)) {
+      // For deleted kustomization files, extract the directory path directly
+      const kustomizeDir = path.dirname(filePath)
+      changedKustomizeDirs.add(path.resolve(path.format(pathGitRepository), kustomizeDir))
+      console.log(`Detected deleted/modified kustomize project: ${kustomizeDir}`)
+      continue
+    }
+
+    // For other files, walk up to find kustomization.yaml or kustomization.yml in current filesystem
+    const kustomizeDirYaml = isFileFoundInPath(constants.KustomizeFiles.KustomizationYaml, path.parse(filePath), pathGitRepository)
+    const kustomizeDirYml = isFileFoundInPath(constants.KustomizeFiles.KustomizationYml, path.parse(filePath), pathGitRepository)
+
+    if (kustomizeDirYaml !== false) {
+      changedKustomizeDirs.add(String(kustomizeDirYaml))
+      console.log(`Detected change in kustomize project directory: ${kustomizeDirYaml}`)
+    } else if (kustomizeDirYml !== false) {
+      changedKustomizeDirs.add(String(kustomizeDirYml))
+      console.log(`Detected change in kustomize project directory: ${kustomizeDirYml}`)
+    }
+  }
+
+  return changedKustomizeDirs
+}
+
 export const removeDuplicatesFromStringArray = (arr: string[]): string[] => {
   let unique: string[] = arr.reduce(function (acc: string[], curr: string) {
     if (!acc.includes(curr)) acc.push(curr)
@@ -282,24 +413,31 @@ export class HelmChart {
   /**
    * template
    */
-  public async template(dir: path.ParsedPath, valueFiles: string, options?: string[]) {
+  public async template(dir: path.ParsedPath, valueFiles: string, options?: string[], ignoreWarnings?: boolean) {
     let cmdOptions: string = ''
     if (options !== undefined) {
       cmdOptions = options?.join(' ')
     }
     let cmdExec = 'helm template helm-release-name "' + path.format(dir) + '" ' + valueFiles + ' ' + cmdOptions
 
+    console.log(`Executing helm template for ${path.format(dir)} with ignoreWarnings=${ignoreWarnings}`)
+
     let result: exec2.ExecOutput = await this.exec(cmdExec)
 
-    if (result.stderr && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
-      throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr)
-    }
-    if (result.stdout.length === 0 || result.stdout.length === 1 || result.stdout.length < 50 || result.stdout === null || result.stdout == '' || result.stdout == ' ') {
-      throw new Error('Helm Chart ' + path.format(dir) + ' Templating failed with empty manifest!\n' + result.stdout + result.stderr)
+    // Check for actual errors (non-zero exit code)
+    if (result.exitCode !== 0) {
+      throw new Error(this.constructor.name + '() Helm Chart ' + path.format(dir) + ' exitCode: ' + result.exitCode + ' stdErr: ' + result.stderr)
     }
 
-    if (result.exitCode !== 0 && result.stderr) {
-      throw new Error(this.lint.name + '() Helm Chart ' + path.format(dir) + ' exitCode: ' + result.exitCode + ' stdErr: ' + result.stderr)
+    // Check for warnings in stderr (only if ignoreWarnings is false)
+    // Allow "WARNING: This chart is deprecated" as it's a common acceptable warning
+    console.log(`Checking warnings: ignoreWarnings=${ignoreWarnings}, stderr="${result.stderr}"`)
+    if (!ignoreWarnings && result.stderr && result.stderr.trim() !== '' && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
+      throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr)
+    }
+
+    if (result.stdout.length === 0 || result.stdout.length === 1 || result.stdout.length < 50 || result.stdout === null || result.stdout == '' || result.stdout == ' ') {
+      throw new Error('Helm Chart ' + path.format(dir) + ' Templating failed with empty manifest!\n' + result.stdout + result.stderr)
     }
     return result.stdout
   }
@@ -370,7 +508,7 @@ export class HelmChart {
     return featureSection
   }
 
-  public readPipelineFeatureOptions(dir: path.FormatInputPathObject, functionName: string): yaml.Document extends true ? unknown : any {
+  public readPipelineFeatureConfig(dir: path.FormatInputPathObject, functionName: string): yaml.Document | false {
     if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
       return false
     }
@@ -379,12 +517,19 @@ export class HelmChart {
     if (unrapYamlbyKey(ciConfigFileDoc, functionName, false) === false) {
       return false
     }
-    const yamlContent: yaml.Document = unrapYamlbyKey(ciConfigFileDoc, functionName)
+    return unrapYamlbyKey(ciConfigFileDoc, functionName)
+  }
 
-    if (unrapYamlbyKey(yamlContent, 'options', false) === false) {
+  public readPipelineFeatureOptions(dir: path.FormatInputPathObject, functionName: string): yaml.Document extends true ? unknown : any {
+    const featureConfig = this.readPipelineFeatureConfig(dir, functionName)
+    if (featureConfig === false) {
       return false
     }
-    return unrapYamlbyKey(yamlContent, 'options')
+
+    if (unrapYamlbyKey(featureConfig, 'options', false) === false) {
+      return false
+    }
+    return unrapYamlbyKey(featureConfig, 'options')
   }
   public async generateReadmeDocumentation(dir: path.ParsedPath, templateFiles: string[], options?: string[]) {
     let helmDocsTemplateFiles: string[] = []

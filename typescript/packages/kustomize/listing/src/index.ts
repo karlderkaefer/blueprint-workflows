@@ -28,6 +28,10 @@ export async function run(): Promise<void> {
     }
     const startDir = path.resolve(GITHUB_WORKSPACE)
 
+    const LIST_CHANGED_ONLY = String(process.env.INPUT_LIST_CHANGED_ONLY || 'false').toLowerCase() === 'true'
+    const BRANCH_NAME = process.env.INPUT_BRANCH_NAME
+    const BASE_BRANCH_NAME = process.env.INPUT_BASE_BRANCH_NAME || 'main'
+
     core.startGroup(util.format(constants.Msgs.KustomizeListingFolderContaining, constants.KustomizeFiles.KustomizationYaml))
 
     // List all directories containing "kustomization.yaml" or "kustomization.yml"
@@ -81,6 +85,16 @@ export async function run(): Promise<void> {
 
     core.debug('All directories containing kustomization files:' + allKustomizeDirs.map((item: any) => `\n- ${item}`))
     core.debug('Filtered directories (excluding Helm chart templates):' + kustomizeDirs.map((item: any) => `\n- ${item}`))
+    core.info(`Found ${kustomizeDirs.length} total Kustomize project(s)`)
+
+    // Detect changed kustomize directories if filtering is enabled
+    let changedKustomizeDirs: Set<string> | null = null
+    if (LIST_CHANGED_ONLY) {
+      const pathGitRepository = path.parse(GITHUB_WORKSPACE)
+      changedKustomizeDirs = await utils.detectChangedKustomizeDirs(pathGitRepository, BRANCH_NAME, BASE_BRANCH_NAME)
+      core.info(`Detected ${changedKustomizeDirs.size} changed kustomize project(s)`)
+    }
+
     core.endGroup()
 
     core.startGroup(util.format(constants.Msgs.KustomizeListingFolderContaining, 'kustomization files'))
@@ -89,6 +103,11 @@ export async function run(): Promise<void> {
     kustomizeListingYamlDoc.commentBefore = ' Kustomize Listing Document which contains all found Kustomize projects with kustomization.yaml or kustomization.yml'
 
     for (const kustomizeDir of kustomizeDirs) {
+      // Skip if filtering is enabled and this project wasn't changed
+      if (LIST_CHANGED_ONLY && changedKustomizeDirs && !changedKustomizeDirs.has(kustomizeDir)) {
+        continue
+      }
+
       // Check which kustomization file exists (yaml or yml)
       let kustomizationFile: string = constants.KustomizeFiles.KustomizationYaml
       let kustomizationPath = path.join(kustomizeDir, constants.KustomizeFiles.KustomizationYaml)

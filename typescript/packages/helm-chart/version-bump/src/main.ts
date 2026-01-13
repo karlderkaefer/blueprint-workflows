@@ -39,8 +39,6 @@ export async function run(): Promise<void> {
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     core.startGroup('Helm Chart Version Bump - modified files compared to ' + BASE_BRANCH_NAME)
 
-    let summaryRawContent: string = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>'
-
     let tableRows = []
     let tableHeader = [
       { data: 'Helm Chart', header: true },
@@ -103,7 +101,8 @@ export async function run(): Promise<void> {
       })
     let summaryRawContentModifiedFiles: string = '<details><summary>Modified Files</summary>\n\n```yaml\n' + yaml.stringify(folders) + '\n```\n\n</details>'
 
-    core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent)
+    const chartCount = Object.keys(helmChartListingYamlDoc.toJSON()).length
+    core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(`\n\nProcessing ${chartCount} chart(s) from listing.\n\n`)
 
     console.log('Looking for ' + constants.HelmChartFiles.Chartyaml + ' files')
     let cmdChartSearch: string = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + constants.HelmChartFiles.Chartyaml + ' || true"'

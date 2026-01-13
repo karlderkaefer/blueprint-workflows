@@ -1,6 +1,19 @@
 name: 'Kustomize Listing'
 description: 'List all Kustomize Projects to be worked on.'
 
+inputs:
+  LIST_CHANGED_ONLY:
+    description: 'Only list Kustomize projects that have been modified'
+    required: false
+    default: 'false'
+  BRANCH_NAME:
+    description: 'Current branch name (PR head branch)'
+    required: false
+  BASE_BRANCH_NAME:
+    description: 'Base branch name (PR base branch)'
+    required: false
+    default: 'main'
+
 # Add your action's branding here. This will appear on the GitHub Marketplace.
 branding:
   icon: 'layers'
