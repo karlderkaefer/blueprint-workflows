@@ -15,43 +15,12 @@ export async function run(): Promise<void> {
 
     utils.assertNullOrEmpty(GITHUB_WORKSPACE, 'Missing env `' + constants.envvars.GITHUB_WORKSPACE + '`!')
 
-    const VALIDATE_CHANGED_ONLY = String(process.env.INPUT_VALIDATE_CHANGED_ONLY || 'false').toLowerCase() === 'true'
-    const BRANCH_NAME = process.env.INPUT_BRANCH_NAME
-    const BASE_BRANCH_NAME = process.env.INPUT_BASE_BRANCH_NAME || 'main'
-    const SOURCE_GIT_REPO_URL = process.env.INPUT_SOURCE_GIT_REPO_URL
-    const TARGET_GIT_REPO_URL = process.env.INPUT_TARGET_GIT_REPO_URL
-    const TOKEN = process.env.INPUT_TOKEN
-
     const pathGitRepository = path.parse(GITHUB_WORKSPACE)
     let utilsHelmChart = utils.HelmChart.getInstance()
 
     let helmChartListingFileContent: string = utilsHelmChart.getListingFileContent(pathGitRepository)
 
     let helmChartListingYamlDoc = new yaml.Document(yaml.parse(helmChartListingFileContent))
-
-    let changedHelmCharts: Set<string> | null = null
-
-    if (VALIDATE_CHANGED_ONLY) {
-      // Detect changed Helm charts using git diff
-      changedHelmCharts = await utils.detectChangedHelmCharts(
-        pathGitRepository,
-        helmChartListingFileContent,
-        BRANCH_NAME,
-        BASE_BRANCH_NAME,
-        SOURCE_GIT_REPO_URL,
-        TARGET_GIT_REPO_URL,
-        TOKEN
-      )
-
-      // If no charts changed, skip validation
-      if (changedHelmCharts.size === 0) {
-        core.info('No Helm charts modified in this PR. Skipping validation.')
-        core.summary.addHeading('Helm Chart Manifest Validation Results').addRaw('✅ No Helm charts were modified in this PR. Validation skipped.').write()
-        return
-      }
-
-      core.info(`Found ${changedHelmCharts.size} changed Helm chart(s): ${Array.from(changedHelmCharts).join(', ')}`)
-    }
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     core.startGroup('Helm Chart Manifest Validation')
     let tableRows = []
@@ -66,12 +35,6 @@ export async function run(): Promise<void> {
 
     // loop through all helm charts and do dependency update
     for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
-      // Skip charts that are not in the changed set
-      if (VALIDATE_CHANGED_ONLY && changedHelmCharts && !changedHelmCharts.has(item)) {
-        core.debug(`Skipping ${item} - not modified`)
-        continue
-      }
-
       let yamlitem = utils.unrapYamlbyKey(helmChartListingYamlDoc, item)
       let listingYamlDir = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.dir)
       let listingYamlRelativePath = utils.unrapYamlbyKey(yamlitem, constants.ListingYamlKeys.relativePath)
@@ -105,16 +68,11 @@ export async function run(): Promise<void> {
         tableRows.push([item, ':heavy_exclamation_mark:', listingYamlRelativePath])
       }
     }
-    let summary = core.summary
+    await core.summary
       .addTable([tableHeader, ...tableRows])
       .addBreak()
       .addDetails('Legende', '✅ = Manifest Validated \n :heavy_exclamation_mark: = Validation Disabled by ' + constants.HelmChartFiles.ciConfigYaml)
-
-    if (VALIDATE_CHANGED_ONLY && changedHelmCharts) {
-      summary.addRaw(`\n\n*Validated only changed charts (${changedHelmCharts.size} of ${Object.keys(helmChartListingYamlDoc.toJSON()).length} total charts)*`)
-    }
-
-    await summary.write()
+      .write()
 
     core.endGroup()
   } catch (error) {
