@@ -55675,7 +55675,11 @@ async function detectChangedHelmChartDirs(pathGitRepository, branchName, baseBra
         return new Set();
     }
     try {
-        const result = await utilsHelmChart.exec(`git diff --name-only "origin/${baseBranchName}...origin/${branchName}"`, [], { cwd: workspace });
+        // Fetch the base branch to ensure we have the latest
+        console.log(`Fetching base branch: ${baseBranchName}`);
+        await utilsHelmChart.exec(`git fetch origin ${baseBranchName}:refs/remotes/origin/${baseBranchName}`, [], { cwd: workspace });
+        // Compare HEAD (current PR branch) with base branch
+        const result = await utilsHelmChart.exec(`git diff --name-only "origin/${baseBranchName}...HEAD"`, [], { cwd: workspace });
         return findChartDirsFromChangedFiles(result.stdout, pathGitRepository);
     }
     catch (error) {
