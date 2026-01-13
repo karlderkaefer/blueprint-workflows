@@ -99,6 +99,14 @@ jobs:
       
       - id: helm-chart-manifest-validation
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/manifest-validation@main"
+        # To enable changed-only validation (recommended for large repos with 40+ charts):
+        # with:
+        #   VALIDATE_CHANGED_ONLY: 'true'
+        #   BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+        #   BASE_BRANCH_NAME: ${{ github.event.pull_request.base.ref }}
+        #   SOURCE_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.head.repo.full_name }}
+        #   TARGET_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.base.repo.full_name }}
+        #   TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - id: kustomize-manifest-validation
         uses: "openmcp-project/blueprint-workflows/.github/actions/kustomize/manifest-validation@main"
