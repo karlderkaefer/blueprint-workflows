@@ -28,12 +28,26 @@ export async function run(): Promise<void> {
     }
     const startDir = path.resolve(GITHUB_WORKSPACE)
 
+    const LIST_CHANGED_ONLY = String(process.env.INPUT_LIST_CHANGED_ONLY || 'false').toLowerCase() === 'true'
+    const BRANCH_NAME = process.env.INPUT_BRANCH_NAME
+    const BASE_BRANCH_NAME = process.env.INPUT_BASE_BRANCH_NAME || 'main'
+
     core.startGroup(util.format(constants.Msgs.HelmChartListingFolderContaining, constants.HelmChartFiles.Chartyaml))
 
     // List all directories containing "Chart.yaml"
     // https://github.com/actions/toolkit/tree/main/packages/glob
     const helmChartDirs = utils.lookup(startDir, constants.HelmChartFiles.Chartyaml)
     core.debug('Directories containing ' + constants.HelmChartFiles.Chartyaml + ':' + helmChartDirs.map((item: any) => `\n- ${item}`))
+    core.info(`Found ${helmChartDirs.length} total Helm chart(s)`)
+
+    // Detect changed chart directories if filtering is enabled
+    let changedChartDirs: Set<string> | null = null
+    if (LIST_CHANGED_ONLY) {
+      const pathGitRepository = path.parse(GITHUB_WORKSPACE)
+      changedChartDirs = await utils.detectChangedHelmChartDirs(pathGitRepository, BRANCH_NAME, BASE_BRANCH_NAME)
+      core.info(`Detected ${changedChartDirs.size} changed chart(s)`)
+    }
+
     core.endGroup()
 
     core.startGroup(util.format(constants.Msgs.HelmChartListingFolderContaining, constants.HelmChartFiles.ciConfigYaml))
@@ -42,6 +56,10 @@ export async function run(): Promise<void> {
     helmChartListingYamlDoc.commentBefore = ' Helm Chart Listing Document which contains all found Helm Charts with ' + constants.HelmChartFiles.Chartyaml
 
     for (const chartYamlDir of helmChartDirs) {
+      // Skip if filtering is enabled and this chart wasn't changed
+      if (LIST_CHANGED_ONLY && changedChartDirs && !changedChartDirs.has(chartYamlDir)) {
+        continue
+      }
       let chartFileContent = fs.readFileSync(path.join(chartYamlDir, constants.HelmChartFiles.Chartyaml), {
         encoding: 'utf8'
       })
@@ -71,7 +89,13 @@ export async function run(): Promise<void> {
 
     let summaryRawContent: string = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>'
     if (process.env.JEST_WORKER_ID == undefined) {
-      await core.summary.addHeading('Helm Chart Listing Results').addRaw(summaryRawContent).write()
+      let summary = core.summary.addHeading('Helm Chart Listing Results').addRaw(summaryRawContent)
+
+      if (LIST_CHANGED_ONLY && changedChartDirs) {
+        summary.addRaw(`\n\n*Listed only changed charts (${changedChartDirs.size} of ${helmChartDirs.length} total charts)*`)
+      }
+
+      await summary.write()
     }
   } catch (error) {
     // Fail the workflow run if an error occurs
