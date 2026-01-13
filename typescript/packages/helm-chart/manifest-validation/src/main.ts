@@ -105,7 +105,10 @@ export async function run(): Promise<void> {
         tableRows.push([item, ':heavy_exclamation_mark:', listingYamlRelativePath])
       }
     }
-    let summary = core.summary.addTable([tableHeader, ...tableRows]).addBreak().addDetails('Legende', '✅ = Manifest Validated \n :heavy_exclamation_mark: = Validation Disabled by ' + constants.HelmChartFiles.ciConfigYaml)
+    let summary = core.summary
+      .addTable([tableHeader, ...tableRows])
+      .addBreak()
+      .addDetails('Legende', '✅ = Manifest Validated \n :heavy_exclamation_mark: = Validation Disabled by ' + constants.HelmChartFiles.ciConfigYaml)
 
     if (VALIDATE_CHANGED_ONLY && changedHelmCharts) {
       summary.addRaw(`\n\n*Validated only changed charts (${changedHelmCharts.size} of ${Object.keys(helmChartListingYamlDoc.toJSON()).length} total charts)*`)

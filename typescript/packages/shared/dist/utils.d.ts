@@ -8,6 +8,20 @@ export declare function findYamlKeyByDir(yamlContent: string, targetDir: string)
 export declare function readYamlFile(dir: path.FormatInputPathObject): yaml.Document extends true ? unknown : any;
 export declare function isFunctionEnabled(dir: path.FormatInputPathObject, functionName: string, defaultBehavior?: boolean): boolean;
 export declare function isFileFoundInPath(file: string, dir: path.FormatInputPathObject, cwd: path.FormatInputPathObject): string | boolean;
+/**
+ * Detect which Helm charts have been modified by comparing current branch with base branch
+ * Reuses the pattern from version-bump action
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param helmChartListingFileContent - Content of helm-chart-listing.yaml
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @param sourceGitRepoUrl - Source repository URL
+ * @param targetGitRepoUrl - Target repository URL
+ * @param token - GitHub token for authentication
+ * @returns Set of chart keys that have been modified
+ */
+export declare function detectChangedHelmCharts(pathGitRepository: path.FormatInputPathObject, helmChartListingFileContent: string, branchName?: string, baseBranchName?: string, sourceGitRepoUrl?: string, targetGitRepoUrl?: string, token?: string): Promise<Set<string>>;
 export declare const removeDuplicatesFromStringArray: (arr: string[]) => string[];
 export declare function unrapYamlbyKey(yamlDoc: yaml.Document, key: string, defaultValue?: string | boolean): yaml.Document extends true ? unknown : any;
 export declare class Git {

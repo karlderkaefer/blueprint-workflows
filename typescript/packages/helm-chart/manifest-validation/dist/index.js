@@ -55575,6 +55575,7 @@ exports.findYamlKeyByDir = findYamlKeyByDir;
 exports.readYamlFile = readYamlFile;
 exports.isFunctionEnabled = isFunctionEnabled;
 exports.isFileFoundInPath = isFileFoundInPath;
+exports.detectChangedHelmCharts = detectChangedHelmCharts;
 exports.unrapYamlbyKey = unrapYamlbyKey;
 const fs = __importStar(__nccwpck_require2_(9896));
 const path = __importStar(__nccwpck_require2_(6928));
@@ -55657,6 +55658,77 @@ function isFileFoundInPath(file, dir, cwd) {
         return false;
     }
     return isFileFoundInPath(file, path.parse(path.dirname(path.format(dir))), cwd);
+}
+/**
+ * Detect which Helm charts have been modified by comparing current branch with base branch
+ * Reuses the pattern from version-bump action
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param helmChartListingFileContent - Content of helm-chart-listing.yaml
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @param sourceGitRepoUrl - Source repository URL
+ * @param targetGitRepoUrl - Target repository URL
+ * @param token - GitHub token for authentication
+ * @returns Set of chart keys that have been modified
+ */
+async function detectChangedHelmCharts(pathGitRepository, helmChartListingFileContent, branchName, baseBranchName = 'main', sourceGitRepoUrl, targetGitRepoUrl, token) {
+    const utilsHelmChart = HelmChart.getInstance();
+    const workspace = path.format(pathGitRepository);
+    // Validate required inputs
+    if (!branchName) {
+        console.log('BRANCH_NAME not provided, falling back to validate all charts');
+        return new Set(Object.keys(yaml.parse(helmChartListingFileContent)));
+    }
+    let result;
+    try {
+        // Handle cross-repo PRs (fork to upstream)
+        if (targetGitRepoUrl && sourceGitRepoUrl && targetGitRepoUrl !== sourceGitRepoUrl) {
+            console.log('Cross-repo PR detected, setting up upstream remote');
+            // Add authentication if token provided
+            let authenticatedRepoUrl = targetGitRepoUrl;
+            if (token) {
+                authenticatedRepoUrl = targetGitRepoUrl.replace('https://', `https://x-access-token:${token}@`);
+            }
+            // Check if upstream remote exists
+            const existingRemotesResult = await utilsHelmChart.exec('git remote', [], { cwd: workspace });
+            const existingRemotes = existingRemotesResult.stdout.split('\n');
+            if (!existingRemotes.includes('upstream')) {
+                await utilsHelmChart.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: workspace });
+                console.log('Added upstream remote');
+            }
+            await utilsHelmChart.exec('git fetch --all', [], { cwd: workspace });
+            result = await utilsHelmChart.exec(`git diff --name-only "upstream/${baseBranchName}..origin/${branchName}"`, [], { cwd: workspace });
+        }
+        else {
+            // Same repo PR
+            result = await utilsHelmChart.exec(`git diff --name-only "origin/${baseBranchName}..origin/${branchName}"`, [], { cwd: workspace });
+        }
+        const changedFiles = result.stdout.split('\n').filter(f => f.trim() !== '');
+        console.log(`Found ${changedFiles.length} changed file(s)`);
+        // Find which Helm charts contain the changed files
+        const changedCharts = new Set();
+        for (const filePath of changedFiles) {
+            // Note: Unlike version-bump, we DO NOT ignore .ci.config.yaml
+            // Changes to validation config should trigger re-validation
+            // Walk up the directory tree to find Chart.yaml
+            const chartDir = isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(filePath), pathGitRepository);
+            if (chartDir !== false) {
+                const yamlKey = findYamlKeyByDir(helmChartListingFileContent, String(chartDir));
+                if (yamlKey) {
+                    changedCharts.add(yamlKey);
+                    console.log(`Detected change in chart: ${yamlKey} (file: ${filePath})`);
+                }
+            }
+        }
+        return changedCharts;
+    }
+    catch (error) {
+        console.error('Failed to detect changed Helm charts:', error);
+        console.log('Falling back to validate all charts');
+        // On error, return all charts as changed (safe fallback)
+        return new Set(Object.keys(yaml.parse(helmChartListingFileContent)));
+    }
 }
 const removeDuplicatesFromStringArray = (arr) => {
     let unique = arr.reduce(function (acc, curr) {
@@ -66613,10 +66685,28 @@ async function run() {
         // Specify the directory to start searching from
         const GITHUB_WORKSPACE = String(process.env[dist_1.constants.envvars.GITHUB_WORKSPACE]);
         dist_1.utils.assertNullOrEmpty(GITHUB_WORKSPACE, 'Missing env `' + dist_1.constants.envvars.GITHUB_WORKSPACE + '`!');
+        const VALIDATE_CHANGED_ONLY = String(process.env.INPUT_VALIDATE_CHANGED_ONLY || 'false').toLowerCase() === 'true';
+        const BRANCH_NAME = process.env.INPUT_BRANCH_NAME;
+        const BASE_BRANCH_NAME = process.env.INPUT_BASE_BRANCH_NAME || 'main';
+        const SOURCE_GIT_REPO_URL = process.env.INPUT_SOURCE_GIT_REPO_URL;
+        const TARGET_GIT_REPO_URL = process.env.INPUT_TARGET_GIT_REPO_URL;
+        const TOKEN = process.env.INPUT_TOKEN;
         const pathGitRepository = path.parse(GITHUB_WORKSPACE);
         let utilsHelmChart = dist_1.utils.HelmChart.getInstance();
         let helmChartListingFileContent = utilsHelmChart.getListingFileContent(pathGitRepository);
         let helmChartListingYamlDoc = new yaml.Document(yaml.parse(helmChartListingFileContent));
+        let changedHelmCharts = null;
+        if (VALIDATE_CHANGED_ONLY) {
+            // Detect changed Helm charts using git diff
+            changedHelmCharts = await dist_1.utils.detectChangedHelmCharts(pathGitRepository, helmChartListingFileContent, BRANCH_NAME, BASE_BRANCH_NAME, SOURCE_GIT_REPO_URL, TARGET_GIT_REPO_URL, TOKEN);
+            // If no charts changed, skip validation
+            if (changedHelmCharts.size === 0) {
+                core.info('No Helm charts modified in this PR. Skipping validation.');
+                core.summary.addHeading('Helm Chart Manifest Validation Results').addRaw('✅ No Helm charts were modified in this PR. Validation skipped.').write();
+                return;
+            }
+            core.info(`Found ${changedHelmCharts.size} changed Helm chart(s): ${Array.from(changedHelmCharts).join(', ')}`);
+        }
         ///////////////////////////////////////////////////////////////////////////////////////////////////
         core.startGroup('Helm Chart Manifest Validation');
         let tableRows = [];
@@ -66629,6 +66719,11 @@ async function run() {
         core.summary.addHeading('Helm Chart Manifest Validation Results').addRaw(summaryRawContent);
         // loop through all helm charts and do dependency update
         for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
+            // Skip charts that are not in the changed set
+            if (VALIDATE_CHANGED_ONLY && changedHelmCharts && !changedHelmCharts.has(item)) {
+                core.debug(`Skipping ${item} - not modified`);
+                continue;
+            }
             let yamlitem = dist_1.utils.unrapYamlbyKey(helmChartListingYamlDoc, item);
             let listingYamlDir = dist_1.utils.unrapYamlbyKey(yamlitem, dist_1.constants.ListingYamlKeys.dir);
             let listingYamlRelativePath = dist_1.utils.unrapYamlbyKey(yamlitem, dist_1.constants.ListingYamlKeys.relativePath);
@@ -66658,11 +66753,14 @@ async function run() {
                 tableRows.push([item, ':heavy_exclamation_mark:', listingYamlRelativePath]);
             }
         }
-        await core.summary
+        let summary = core.summary
             .addTable([tableHeader, ...tableRows])
             .addBreak()
-            .addDetails('Legende', '✅ = Manifest Validated \n :heavy_exclamation_mark: = Validation Disabled by ' + dist_1.constants.HelmChartFiles.ciConfigYaml)
-            .write();
+            .addDetails('Legende', '✅ = Manifest Validated \n :heavy_exclamation_mark: = Validation Disabled by ' + dist_1.constants.HelmChartFiles.ciConfigYaml);
+        if (VALIDATE_CHANGED_ONLY && changedHelmCharts) {
+            summary.addRaw(`\n\n*Validated only changed charts (${changedHelmCharts.size} of ${Object.keys(helmChartListingYamlDoc.toJSON()).length} total charts)*`);
+        }
+        await summary.write();
         core.endGroup();
     }
     catch (error) {
