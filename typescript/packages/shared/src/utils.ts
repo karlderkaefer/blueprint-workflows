@@ -102,11 +102,7 @@ export function isFileFoundInPath(file: string, dir: path.FormatInputPathObject,
  * @param baseBranchName - Base branch name (PR base)
  * @returns Set of chart directory paths that have been modified
  */
-export async function detectChangedHelmChartDirs(
-  pathGitRepository: path.FormatInputPathObject,
-  branchName?: string,
-  baseBranchName: string = 'main'
-): Promise<Set<string>> {
+export async function detectChangedHelmChartDirs(pathGitRepository: path.FormatInputPathObject, branchName?: string, baseBranchName: string = 'main'): Promise<Set<string>> {
   const utilsHelmChart = HelmChart.getInstance()
   const workspace = path.format(pathGitRepository)
 

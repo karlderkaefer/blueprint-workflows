@@ -55575,7 +55575,7 @@ exports.findYamlKeyByDir = findYamlKeyByDir;
 exports.readYamlFile = readYamlFile;
 exports.isFunctionEnabled = isFunctionEnabled;
 exports.isFileFoundInPath = isFileFoundInPath;
-exports.detectChangedHelmCharts = detectChangedHelmCharts;
+exports.detectChangedHelmChartDirs = detectChangedHelmChartDirs;
 exports.unrapYamlbyKey = unrapYamlbyKey;
 const fs = __importStar(__nccwpck_require2_(9896));
 const path = __importStar(__nccwpck_require2_(6928));
@@ -55660,75 +55660,44 @@ function isFileFoundInPath(file, dir, cwd) {
     return isFileFoundInPath(file, path.parse(path.dirname(path.format(dir))), cwd);
 }
 /**
- * Detect which Helm charts have been modified by comparing current branch with base branch
- * Reuses the pattern from version-bump action
+ * Detect which Helm chart directories have been modified by comparing current branch with base branch
  *
  * @param pathGitRepository - Root path of the git repository
- * @param helmChartListingFileContent - Content of helm-chart-listing.yaml
  * @param branchName - Current branch name (PR head)
  * @param baseBranchName - Base branch name (PR base)
- * @param sourceGitRepoUrl - Source repository URL
- * @param targetGitRepoUrl - Target repository URL
- * @param token - GitHub token for authentication
- * @returns Set of chart keys that have been modified
+ * @returns Set of chart directory paths that have been modified
  */
-async function detectChangedHelmCharts(pathGitRepository, helmChartListingFileContent, branchName, baseBranchName = 'main', sourceGitRepoUrl, targetGitRepoUrl, token) {
+async function detectChangedHelmChartDirs(pathGitRepository, branchName, baseBranchName = 'main') {
     const utilsHelmChart = HelmChart.getInstance();
     const workspace = path.format(pathGitRepository);
-    // Validate required inputs
     if (!branchName) {
-        console.log('BRANCH_NAME not provided, falling back to validate all charts');
-        return new Set(Object.keys(yaml.parse(helmChartListingFileContent)));
+        console.log('BRANCH_NAME not provided, returning empty set');
+        return new Set();
     }
-    let result;
     try {
-        // Handle cross-repo PRs (fork to upstream)
-        if (targetGitRepoUrl && sourceGitRepoUrl && targetGitRepoUrl !== sourceGitRepoUrl) {
-            console.log('Cross-repo PR detected, setting up upstream remote');
-            // Add authentication if token provided
-            let authenticatedRepoUrl = targetGitRepoUrl;
-            if (token) {
-                authenticatedRepoUrl = targetGitRepoUrl.replace('https://', `https://x-access-token:${token}@`);
-            }
-            // Check if upstream remote exists
-            const existingRemotesResult = await utilsHelmChart.exec('git remote', [], { cwd: workspace });
-            const existingRemotes = existingRemotesResult.stdout.split('\n');
-            if (!existingRemotes.includes('upstream')) {
-                await utilsHelmChart.exec('git remote add upstream ' + authenticatedRepoUrl, [], { cwd: workspace });
-                console.log('Added upstream remote');
-            }
-            await utilsHelmChart.exec('git fetch --all', [], { cwd: workspace });
-            result = await utilsHelmChart.exec(`git diff --name-only "upstream/${baseBranchName}..origin/${branchName}"`, [], { cwd: workspace });
-        }
-        else {
-            // Same repo PR
-            result = await utilsHelmChart.exec(`git diff --name-only "origin/${baseBranchName}..origin/${branchName}"`, [], { cwd: workspace });
-        }
-        const changedFiles = result.stdout.split('\n').filter(f => f.trim() !== '');
-        console.log(`Found ${changedFiles.length} changed file(s)`);
-        // Find which Helm charts contain the changed files
-        const changedCharts = new Set();
-        for (const filePath of changedFiles) {
-            // Note: Unlike version-bump, we DO NOT ignore .ci.config.yaml
-            // Changes to validation config should trigger re-validation
-            // Walk up the directory tree to find Chart.yaml
-            const chartDir = isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(filePath), pathGitRepository);
-            if (chartDir !== false) {
-                const yamlKey = findYamlKeyByDir(helmChartListingFileContent, String(chartDir));
-                if (yamlKey) {
-                    changedCharts.add(yamlKey);
-                    console.log(`Detected change in chart: ${yamlKey} (file: ${filePath})`);
-                }
-            }
-        }
-        return changedCharts;
+        const result = await utilsHelmChart.exec(`git diff --name-only "origin/${baseBranchName}...origin/${branchName}"`, [], { cwd: workspace });
+        return findChartDirsFromChangedFiles(result.stdout, pathGitRepository);
     }
     catch (error) {
         console.error('Failed to detect changed Helm charts:', error);
-        console.log('Falling back to validate all charts');
-        // On error, return all charts as changed (safe fallback)
-        return new Set(Object.keys(yaml.parse(helmChartListingFileContent)));
+        return new Set();
     }
+}
+/**
+ * Helper function to find chart directories from a list of changed files
+ */
+function findChartDirsFromChangedFiles(changedFilesOutput, pathGitRepository) {
+    const changedFiles = changedFilesOutput.split('\n').filter(f => f.trim() !== '');
+    console.log(`Found ${changedFiles.length} changed file(s)`);
+    const changedChartDirs = new Set();
+    for (const filePath of changedFiles) {
+        const chartDir = isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(filePath), pathGitRepository);
+        if (chartDir !== false) {
+            changedChartDirs.add(String(chartDir));
+            console.log(`Detected change in chart directory: ${chartDir}`);
+        }
+    }
+    return changedChartDirs;
 }
 const removeDuplicatesFromStringArray = (arr) => {
     let unique = arr.reduce(function (acc, curr) {
@@ -66699,16 +66668,31 @@ async function run() {
             return;
         }
         const startDir = path.resolve(GITHUB_WORKSPACE);
+        const LIST_CHANGED_ONLY = String(process.env.INPUT_LIST_CHANGED_ONLY || 'false').toLowerCase() === 'true';
+        const BRANCH_NAME = process.env.INPUT_BRANCH_NAME;
+        const BASE_BRANCH_NAME = process.env.INPUT_BASE_BRANCH_NAME || 'main';
         core.startGroup(util.format(dist_1.constants.Msgs.HelmChartListingFolderContaining, dist_1.constants.HelmChartFiles.Chartyaml));
         // List all directories containing "Chart.yaml"
         // https://github.com/actions/toolkit/tree/main/packages/glob
         const helmChartDirs = dist_1.utils.lookup(startDir, dist_1.constants.HelmChartFiles.Chartyaml);
         core.debug('Directories containing ' + dist_1.constants.HelmChartFiles.Chartyaml + ':' + helmChartDirs.map((item) => `\n- ${item}`));
+        core.info(`Found ${helmChartDirs.length} total Helm chart(s)`);
+        // Detect changed chart directories if filtering is enabled
+        let changedChartDirs = null;
+        if (LIST_CHANGED_ONLY) {
+            const pathGitRepository = path.parse(GITHUB_WORKSPACE);
+            changedChartDirs = await dist_1.utils.detectChangedHelmChartDirs(pathGitRepository, BRANCH_NAME, BASE_BRANCH_NAME);
+            core.info(`Detected ${changedChartDirs.size} changed chart(s)`);
+        }
         core.endGroup();
         core.startGroup(util.format(dist_1.constants.Msgs.HelmChartListingFolderContaining, dist_1.constants.HelmChartFiles.ciConfigYaml));
         const helmChartListingYamlDoc = new yaml.Document({});
         helmChartListingYamlDoc.commentBefore = ' Helm Chart Listing Document which contains all found Helm Charts with ' + dist_1.constants.HelmChartFiles.Chartyaml;
         for (const chartYamlDir of helmChartDirs) {
+            // Skip if filtering is enabled and this chart wasn't changed
+            if (LIST_CHANGED_ONLY && changedChartDirs && !changedChartDirs.has(chartYamlDir)) {
+                continue;
+            }
             let chartFileContent = fs.readFileSync(path.join(chartYamlDir, dist_1.constants.HelmChartFiles.Chartyaml), {
                 encoding: 'utf8'
             });
@@ -66734,7 +66718,11 @@ async function run() {
         core.notice(util.format(dist_1.constants.Msgs.HelmChartListingFileWritten, dist_1.constants.HelmChartFiles.listingFile));
         let summaryRawContent = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>';
         if (process.env.JEST_WORKER_ID == undefined) {
-            await core.summary.addHeading('Helm Chart Listing Results').addRaw(summaryRawContent).write();
+            let summary = core.summary.addHeading('Helm Chart Listing Results').addRaw(summaryRawContent);
+            if (LIST_CHANGED_ONLY && changedChartDirs) {
+                summary.addRaw(`\n\n*Listed only changed charts (${changedChartDirs.size} of ${helmChartDirs.length} total charts)*`);
+            }
+            await summary.write();
         }
     }
     catch (error) {
