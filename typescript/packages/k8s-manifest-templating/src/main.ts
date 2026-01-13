@@ -20,7 +20,13 @@ async function runHelmTemplating(
   let manifestTargetFolder: path.FormatInputPathObject = path.parse(
     GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()
   )
-  core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder))
+  core.debug('Manifest target folder: ' + path.format(manifestTargetFolder))
+
+  // Delete existing manifests for this chart only
+  if (fs.existsSync(path.format(manifestTargetFolder))) {
+    core.info('Deleting existing manifests for: ' + path.format(manifestTargetFolder))
+    fs.rmSync(path.format(manifestTargetFolder), { recursive: true })
+  }
 
   fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true })
   core.debug('Created folder: ' + path.format(manifestTargetFolder))
@@ -66,11 +72,27 @@ export async function run(): Promise<void> {
     let helmChartListingYamlDoc = new yaml.Document(yaml.parse(helmChartListingFileContent))
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     const manifestPath: path.FormatInputPathObject = path.parse(GITHUB_WORKSPACE + '/manifests/')
-    if (fs.existsSync(path.format(manifestPath))) {
-      fs.rmSync(path.format(manifestPath), { recursive: true })
+
+    // Detect if we're using filtered listing by comparing with all available charts
+    const allHelmCharts = utils.lookup(GITHUB_WORKSPACE, constants.HelmChartFiles.Chartyaml)
+    const chartsInListing = Object.keys(helmChartListingYamlDoc.toJSON()).length
+    const isFilteredListing = chartsInListing < allHelmCharts.length
+
+    if (isFilteredListing) {
+      core.info(`Filtered listing detected (${chartsInListing} of ${allHelmCharts.length} charts). Using selective manifest updates.`)
+      // Create manifests folder if it doesn't exist
+      if (!fs.existsSync(path.format(manifestPath))) {
+        fs.mkdirSync(path.format(manifestPath), { recursive: true })
+      }
     } else {
+      core.info(`Full listing detected (${chartsInListing} charts). Using full manifest regeneration.`)
+      // Old behavior: Delete entire manifests folder for a clean slate
+      if (fs.existsSync(path.format(manifestPath))) {
+        fs.rmSync(path.format(manifestPath), { recursive: true })
+      }
       fs.mkdirSync(path.format(manifestPath), { recursive: true })
     }
+
     core.startGroup('K8s Manifest Templating')
 
     let tableRows = []
@@ -281,7 +303,13 @@ async function runKustomizeTemplating(
   let manifestTargetFolder: path.FormatInputPathObject = path.parse(
     GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop()
   )
-  core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder))
+  core.debug('Manifest target folder: ' + path.format(manifestTargetFolder))
+
+  // Delete existing manifests for this kustomize project only
+  if (fs.existsSync(path.format(manifestTargetFolder))) {
+    core.info('Deleting existing manifests for: ' + path.format(manifestTargetFolder))
+    fs.rmSync(path.format(manifestTargetFolder), { recursive: true })
+  }
 
   fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true })
   core.debug('Created folder: ' + path.format(manifestTargetFolder))
