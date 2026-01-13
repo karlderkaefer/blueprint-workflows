@@ -74,13 +74,19 @@ Follow this PR to see example of the workflows in action:
 #### Helm Chart Actions
 
 #### 1. **Helm Chart Listing**
-   - **Description**: Lists all Helm Charts in the repository.
+   - **Description**: Lists all Helm Charts in the repository. Supports optional filtering to list only changed charts in pull requests, which significantly speeds up dependency builds and all subsequent actions.
    - **Usage**:
      ```yaml
      steps:
        - id: helm-chart-listing
          uses: openmcp-project/blueprint-workflows/.github/actions/helm-chart/listing@main
+         # Optional: execute helm actions only for changed charts in PRs
+         # with:
+         #   LIST_CHANGED_ONLY: 'true'
+         #   BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+         #   BASE_BRANCH_NAME: ${{ github.event.pull_request.base.ref }}
      ```
+  - Note `LIST_CHANGED_ONLY=true` has the side effect that manifest deletions do not work properly. A separate cron job is required to with `LIST_CHANGED_ONLY=false` to catch deletions.
 
 #### 2. **Helm Chart Dependency Build/Update**
    - **Description**: Updates dependencies for all Helm Charts.
