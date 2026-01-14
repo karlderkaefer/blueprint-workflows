@@ -58544,15 +58544,17 @@ class HelmChart {
     /**
      * template
      */
-    async template(dir, valueFiles, options) {
+    async template(dir, valueFiles, options, ignoreWarnings) {
         let cmdOptions = '';
         if (options !== undefined) {
             cmdOptions = options?.join(' ');
         }
         let cmdExec = 'helm template helm-release-name "' + path.format(dir) + '" ' + valueFiles + ' ' + cmdOptions;
         let result = await this.exec(cmdExec);
-        if (result.stderr && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
-            throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr);
+        if (!ignoreWarnings) {
+            if (result.stderr && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
+                throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr);
+            }
         }
         if (result.stdout.length === 0 || result.stdout.length === 1 || result.stdout.length < 50 || result.stdout === null || result.stdout == '' || result.stdout == ' ') {
             throw new Error('Helm Chart ' + path.format(dir) + ' Templating failed with empty manifest!\n' + result.stdout + result.stderr);
