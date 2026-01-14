@@ -55695,6 +55695,15 @@ function findChartDirsFromChangedFiles(changedFilesOutput, pathGitRepository) {
     console.log(`Found ${changedFiles.length} changed file(s)`);
     const changedChartDirs = new Set();
     for (const filePath of changedFiles) {
+        // Check if this is a Chart.yaml file being deleted
+        if (filePath.endsWith(constants.HelmChartFiles.Chartyaml)) {
+            // For deleted Chart.yaml files, extract the directory path directly
+            const chartDir = path.dirname(filePath);
+            changedChartDirs.add(path.resolve(path.format(pathGitRepository), chartDir));
+            console.log(`Detected deleted/modified chart: ${chartDir}`);
+            continue;
+        }
+        // For other files, walk up to find Chart.yaml in current filesystem
         const chartDir = isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(filePath), pathGitRepository);
         if (chartDir !== false) {
             changedChartDirs.add(String(chartDir));

@@ -55695,6 +55695,15 @@ function findChartDirsFromChangedFiles(changedFilesOutput, pathGitRepository) {
     console.log(`Found ${changedFiles.length} changed file(s)`);
     const changedChartDirs = new Set();
     for (const filePath of changedFiles) {
+        // Check if this is a Chart.yaml file being deleted
+        if (filePath.endsWith(constants.HelmChartFiles.Chartyaml)) {
+            // For deleted Chart.yaml files, extract the directory path directly
+            const chartDir = path.dirname(filePath);
+            changedChartDirs.add(path.resolve(path.format(pathGitRepository), chartDir));
+            console.log(`Detected deleted/modified chart: ${chartDir}`);
+            continue;
+        }
+        // For other files, walk up to find Chart.yaml in current filesystem
         const chartDir = isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(filePath), pathGitRepository);
         if (chartDir !== false) {
             changedChartDirs.add(String(chartDir));
@@ -66652,7 +66661,12 @@ const yaml = __importStar(__nccwpck_require__(8815));
 async function runHelmTemplating(prefix, valueFiles, GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, helmChartID) {
     core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles);
     let manifestTargetFolder = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop());
-    core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder));
+    core.debug('Manifest target folder: ' + path.format(manifestTargetFolder));
+    // Delete existing manifests for this chart only
+    if (fs.existsSync(path.format(manifestTargetFolder))) {
+        core.info('Deleting existing manifests for: ' + path.format(manifestTargetFolder));
+        fs.rmSync(path.format(manifestTargetFolder), { recursive: true });
+    }
     fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true });
     core.debug('Created folder: ' + path.format(manifestTargetFolder));
     let helmOptions = [];
@@ -66687,10 +66701,23 @@ async function run() {
         let helmChartListingYamlDoc = new yaml.Document(yaml.parse(helmChartListingFileContent));
         ///////////////////////////////////////////////////////////////////////////////////////////////////
         const manifestPath = path.parse(GITHUB_WORKSPACE + '/manifests/');
-        if (fs.existsSync(path.format(manifestPath))) {
-            fs.rmSync(path.format(manifestPath), { recursive: true });
+        // Detect if we're using filtered listing by comparing with all available charts
+        const allHelmCharts = shared_1.utils.lookup(GITHUB_WORKSPACE, shared_1.constants.HelmChartFiles.Chartyaml);
+        const chartsInListing = Object.keys(helmChartListingYamlDoc.toJSON()).length;
+        const isFilteredListing = chartsInListing < allHelmCharts.length;
+        if (isFilteredListing) {
+            core.info(`Filtered listing detected (${chartsInListing} of ${allHelmCharts.length} charts). Using selective manifest updates.`);
+            // Create manifests folder if it doesn't exist
+            if (!fs.existsSync(path.format(manifestPath))) {
+                fs.mkdirSync(path.format(manifestPath), { recursive: true });
+            }
         }
         else {
+            core.info(`Full listing detected (${chartsInListing} charts). Using full manifest regeneration.`);
+            // Old behavior: Delete entire manifests folder for a clean slate
+            if (fs.existsSync(path.format(manifestPath))) {
+                fs.rmSync(path.format(manifestPath), { recursive: true });
+            }
             fs.mkdirSync(path.format(manifestPath), { recursive: true });
         }
         core.startGroup('K8s Manifest Templating');
@@ -66852,7 +66879,12 @@ async function run() {
 async function runKustomizeTemplating(prefix, GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, tableRows, kustomizeProjectID, overlayPath) {
     core.debug('runKustomizeTemplating called with prefix:' + prefix + ' overlayPath:' + (overlayPath || 'base'));
     let manifestTargetFolder = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop());
-    core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder));
+    core.debug('Manifest target folder: ' + path.format(manifestTargetFolder));
+    // Delete existing manifests for this kustomize project only
+    if (fs.existsSync(path.format(manifestTargetFolder))) {
+        core.info('Deleting existing manifests for: ' + path.format(manifestTargetFolder));
+        fs.rmSync(path.format(manifestTargetFolder), { recursive: true });
+    }
     fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true });
     core.debug('Created folder: ' + path.format(manifestTargetFolder));
     try {
