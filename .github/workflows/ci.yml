@@ -9,6 +9,7 @@ on:
   pull_request:
     branches:
       - main
+      - develop
 
 env:
   HELM_DOCS_VERSION: "1.14.2"    
