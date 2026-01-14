@@ -55575,6 +55575,7 @@ exports.findYamlKeyByDir = findYamlKeyByDir;
 exports.readYamlFile = readYamlFile;
 exports.isFunctionEnabled = isFunctionEnabled;
 exports.isFileFoundInPath = isFileFoundInPath;
+exports.detectChangedHelmChartDirs = detectChangedHelmChartDirs;
 exports.unrapYamlbyKey = unrapYamlbyKey;
 const fs = __importStar(__nccwpck_require2_(9896));
 const path = __importStar(__nccwpck_require2_(6928));
@@ -55657,6 +55658,59 @@ function isFileFoundInPath(file, dir, cwd) {
         return false;
     }
     return isFileFoundInPath(file, path.parse(path.dirname(path.format(dir))), cwd);
+}
+/**
+ * Detect which Helm chart directories have been modified by comparing current branch with base branch
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @returns Set of chart directory paths that have been modified
+ */
+async function detectChangedHelmChartDirs(pathGitRepository, branchName, baseBranchName = 'main') {
+    const utilsHelmChart = HelmChart.getInstance();
+    const workspace = path.format(pathGitRepository);
+    if (!branchName) {
+        console.log('BRANCH_NAME not provided, returning empty set');
+        return new Set();
+    }
+    try {
+        // Fetch the base branch to ensure we have the latest
+        console.log(`Fetching base branch: ${baseBranchName}`);
+        await utilsHelmChart.exec(`git fetch origin ${baseBranchName}:refs/remotes/origin/${baseBranchName}`, [], { cwd: workspace });
+        // Compare HEAD (current PR branch) with base branch
+        const result = await utilsHelmChart.exec(`git diff --name-only "origin/${baseBranchName}...HEAD"`, [], { cwd: workspace });
+        return findChartDirsFromChangedFiles(result.stdout, pathGitRepository);
+    }
+    catch (error) {
+        console.error('Failed to detect changed Helm charts:', error);
+        return new Set();
+    }
+}
+/**
+ * Helper function to find chart directories from a list of changed files
+ */
+function findChartDirsFromChangedFiles(changedFilesOutput, pathGitRepository) {
+    const changedFiles = changedFilesOutput.split('\n').filter(f => f.trim() !== '');
+    console.log(`Found ${changedFiles.length} changed file(s)`);
+    const changedChartDirs = new Set();
+    for (const filePath of changedFiles) {
+        // Check if this is a Chart.yaml file being deleted
+        if (filePath.endsWith(constants.HelmChartFiles.Chartyaml)) {
+            // For deleted Chart.yaml files, extract the directory path directly
+            const chartDir = path.dirname(filePath);
+            changedChartDirs.add(path.resolve(path.format(pathGitRepository), chartDir));
+            console.log(`Detected deleted/modified chart: ${chartDir}`);
+            continue;
+        }
+        // For other files, walk up to find Chart.yaml in current filesystem
+        const chartDir = isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(filePath), pathGitRepository);
+        if (chartDir !== false) {
+            changedChartDirs.add(String(chartDir));
+            console.log(`Detected change in chart directory: ${chartDir}`);
+        }
+    }
+    return changedChartDirs;
 }
 const removeDuplicatesFromStringArray = (arr) => {
     let unique = arr.reduce(function (acc, curr) {
@@ -66609,7 +66663,12 @@ const yaml = __importStar(__nccwpck_require__(8815));
 async function runHelmTemplating(prefix, valueFiles, GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, utilsHelmChart, tableRows, helmChartID) {
     core.debug('runHelmTemplating called with prefix:' + prefix + ' and valueFiles:' + valueFiles);
     let manifestTargetFolder = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop());
-    core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder));
+    core.debug('Manifest target folder: ' + path.format(manifestTargetFolder));
+    // Delete existing manifests for this chart only
+    if (fs.existsSync(path.format(manifestTargetFolder))) {
+        core.info('Deleting existing manifests for: ' + path.format(manifestTargetFolder));
+        fs.rmSync(path.format(manifestTargetFolder), { recursive: true });
+    }
     fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true });
     core.debug('Created folder: ' + path.format(manifestTargetFolder));
     let helmOptions = [];
@@ -66644,10 +66703,23 @@ async function run() {
         let helmChartListingYamlDoc = new yaml.Document(yaml.parse(helmChartListingFileContent));
         ///////////////////////////////////////////////////////////////////////////////////////////////////
         const manifestPath = path.parse(GITHUB_WORKSPACE + '/manifests/');
-        if (fs.existsSync(path.format(manifestPath))) {
-            fs.rmSync(path.format(manifestPath), { recursive: true });
+        // Detect if we're using filtered listing by comparing with all available charts
+        const allHelmCharts = shared_1.utils.lookup(GITHUB_WORKSPACE, shared_1.constants.HelmChartFiles.Chartyaml);
+        const chartsInListing = Object.keys(helmChartListingYamlDoc.toJSON()).length;
+        const isFilteredListing = chartsInListing < allHelmCharts.length;
+        if (isFilteredListing) {
+            core.info(`Filtered listing detected (${chartsInListing} of ${allHelmCharts.length} charts). Using selective manifest updates.`);
+            // Create manifests folder if it doesn't exist
+            if (!fs.existsSync(path.format(manifestPath))) {
+                fs.mkdirSync(path.format(manifestPath), { recursive: true });
+            }
         }
         else {
+            core.info(`Full listing detected (${chartsInListing} charts). Using full manifest regeneration.`);
+            // Old behavior: Delete entire manifests folder for a clean slate
+            if (fs.existsSync(path.format(manifestPath))) {
+                fs.rmSync(path.format(manifestPath), { recursive: true });
+            }
             fs.mkdirSync(path.format(manifestPath), { recursive: true });
         }
         core.startGroup('K8s Manifest Templating');
@@ -66809,7 +66881,12 @@ async function run() {
 async function runKustomizeTemplating(prefix, GITHUB_WORKSPACE, listingYamlManifestPath, listingYamlRelativePath, listingYamlName, dir, tableRows, kustomizeProjectID, overlayPath) {
     core.debug('runKustomizeTemplating called with prefix:' + prefix + ' overlayPath:' + (overlayPath || 'base'));
     let manifestTargetFolder = path.parse(GITHUB_WORKSPACE + '/manifests/' + listingYamlManifestPath + '/' + prefix + listingYamlRelativePath.split('/').pop());
-    core.debug('Creating manifest target folder: ' + path.format(manifestTargetFolder));
+    core.debug('Manifest target folder: ' + path.format(manifestTargetFolder));
+    // Delete existing manifests for this kustomize project only
+    if (fs.existsSync(path.format(manifestTargetFolder))) {
+        core.info('Deleting existing manifests for: ' + path.format(manifestTargetFolder));
+        fs.rmSync(path.format(manifestTargetFolder), { recursive: true });
+    }
     fs.mkdirSync(path.format(manifestTargetFolder), { recursive: true });
     core.debug('Created folder: ' + path.format(manifestTargetFolder));
     try {
