@@ -1,28 +1,6 @@
 name: 'Manifest Validation'
 description: 'Manifests every Helm Chart and performs strict Validation'
 
-inputs:
-  VALIDATE_CHANGED_ONLY:
-    description: 'Only validate Helm charts that have been modified'
-    required: false
-    default: 'false'
-  BRANCH_NAME:
-    description: 'Current branch name (PR head branch)'
-    required: false
-  BASE_BRANCH_NAME:
-    description: 'Base branch name (PR base branch)'
-    required: false
-    default: 'main'
-  SOURCE_GIT_REPO_URL:
-    description: 'URL of source Git repository'
-    required: false
-  TARGET_GIT_REPO_URL:
-    description: 'URL of target Git repository'
-    required: false
-  TOKEN:
-    description: 'GitHub token for authentication'
-    required: false
-
 # Add your action's branding here. This will appear on the GitHub Marketplace.
 branding:
   icon: 'heart'

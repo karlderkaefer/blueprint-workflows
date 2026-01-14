@@ -57,7 +57,7 @@ jobs:
             
       - id: helm-chart-listing
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/listing@main"
-        # To enable changed-only listing (recommended for large repos with 40+ charts):
+        # To enable changed-only listing:
         # This will significantly speed up dep-build and all subsequent actions
         # with:
         #   LIST_CHANGED_ONLY: 'true'
@@ -105,14 +105,6 @@ jobs:
       
       - id: helm-chart-manifest-validation
         uses: "openmcp-project/blueprint-workflows/.github/actions/helm-chart/manifest-validation@main"
-        # To enable changed-only validation (recommended for large repos with 40+ charts):
-        # with:
-        #   VALIDATE_CHANGED_ONLY: 'true'
-        #   BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
-        #   BASE_BRANCH_NAME: ${{ github.event.pull_request.base.ref }}
-        #   SOURCE_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.head.repo.full_name }}
-        #   TARGET_GIT_REPO_URL: ${{ github.server_url }}/${{ github.event.pull_request.base.repo.full_name }}
-        #   TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - id: kustomize-manifest-validation
         uses: "openmcp-project/blueprint-workflows/.github/actions/kustomize/manifest-validation@main"
