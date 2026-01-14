@@ -130,12 +130,7 @@ describe('main.run with ignoreWarnings option', () => {
 
       await main.run()
 
-      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        false
-      )
+      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), false)
     })
 
     it('should pass ignoreWarnings=true when option is set to true', async () => {
@@ -146,12 +141,7 @@ ignoreWarnings: true`
 
       await main.run()
 
-      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        true
-      )
+      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), true)
     })
 
     it('should pass ignoreWarnings=false when option is explicitly set to false', async () => {
@@ -162,12 +152,7 @@ ignoreWarnings: false`
 
       await main.run()
 
-      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        false
-      )
+      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), false)
     })
 
     it('should handle ignoreWarnings with other helm options', async () => {
@@ -205,9 +190,11 @@ ignoreWarnings: true`
 
       const [dir, valueFiles, helmOptions, ignoreWarnings] = helmChartInstanceMock.template.mock.calls[0]
 
-      expect(dir).toEqual(expect.objectContaining({
-        dir: '/test/workspace/charts/test-chart'
-      }))
+      expect(dir).toEqual(
+        expect.objectContaining({
+          dir: '/test/workspace/charts/test-chart'
+        })
+      )
       expect(valueFiles).toBe('-f /test/workspace/charts/test-chart/values.yaml')
       expect(Array.isArray(helmOptions)).toBe(true)
       expect(ignoreWarnings).toBe(true)
@@ -271,13 +258,7 @@ ignoreWarnings: true`
 
       await main.run()
 
-      expect(core.summary.addTable).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.arrayContaining([
-            expect.objectContaining({ data: 'UID Helm Chart', header: true })
-          ])
-        ])
-      )
+      expect(core.summary.addTable).toHaveBeenCalledWith(expect.arrayContaining([expect.arrayContaining([expect.objectContaining({ data: 'UID Helm Chart', header: true })])]))
       expect(core.summary.write).toHaveBeenCalled()
     })
   })

@@ -33,9 +33,7 @@ describe('HelmChart.template ignoreWarnings parameter', () => {
         stderr: 'WARNING: Some other warning message'
       })
 
-      await expect(
-        helmChart.template(dir, valueFiles, [], false)
-      ).rejects.toThrow('Helm Chart /test/helm-chart is deprecated! stderr: WARNING: Some other warning message')
+      await expect(helmChart.template(dir, valueFiles, [], false)).rejects.toThrow('Helm Chart /test/helm-chart is deprecated! stderr: WARNING: Some other warning message')
     })
 
     it('should throw error when stderr contains multiple warnings', async () => {
@@ -48,9 +46,7 @@ describe('HelmChart.template ignoreWarnings parameter', () => {
         stderr: 'WARNING: Multiple warnings\nWARNING: Another warning'
       })
 
-      await expect(
-        helmChart.template(dir, valueFiles, [], false)
-      ).rejects.toThrow('Helm Chart /test/helm-chart is deprecated!')
+      await expect(helmChart.template(dir, valueFiles, [], false)).rejects.toThrow('Helm Chart /test/helm-chart is deprecated!')
     })
 
     it('should NOT throw error for deprecated chart warning (allowed warning)', async () => {
@@ -140,9 +136,7 @@ describe('HelmChart.template ignoreWarnings parameter', () => {
         stderr: 'WARNING: Some warning'
       })
 
-      await expect(
-        helmChart.template(dir, valueFiles, [], true)
-      ).rejects.toThrow('Helm Chart /test/helm-chart Templating failed with empty manifest!')
+      await expect(helmChart.template(dir, valueFiles, [], true)).rejects.toThrow('Helm Chart /test/helm-chart Templating failed with empty manifest!')
     })
 
     it('should still throw error for non-zero exit code with stderr', async () => {
@@ -155,9 +149,7 @@ describe('HelmChart.template ignoreWarnings parameter', () => {
         stderr: 'ERROR: Fatal error occurred'
       })
 
-      await expect(
-        helmChart.template(dir, valueFiles, [], true)
-      ).rejects.toThrow('Helm Chart /test/helm-chart exitCode: 1 stdErr: ERROR: Fatal error occurred')
+      await expect(helmChart.template(dir, valueFiles, [], true)).rejects.toThrow('Helm Chart /test/helm-chart exitCode: 1 stdErr: ERROR: Fatal error occurred')
     })
   })
 
@@ -172,9 +164,7 @@ describe('HelmChart.template ignoreWarnings parameter', () => {
         stderr: 'WARNING: Some warning'
       })
 
-      await expect(
-        helmChart.template(dir, valueFiles, [])
-      ).rejects.toThrow('Helm Chart /test/helm-chart is deprecated!')
+      await expect(helmChart.template(dir, valueFiles, [])).rejects.toThrow('Helm Chart /test/helm-chart is deprecated!')
     })
   })
 
@@ -192,9 +182,7 @@ describe('HelmChart.template ignoreWarnings parameter', () => {
 
       await helmChart.template(dir, valueFiles, options, false)
 
-      expect(execMock).toHaveBeenCalledWith(
-        expect.stringContaining('--skip-crds --dependency-update')
-      )
+      expect(execMock).toHaveBeenCalledWith(expect.stringContaining('--skip-crds --dependency-update'))
     })
 
     it('should pass options correctly when ignoreWarnings is true', async () => {
@@ -210,9 +198,7 @@ describe('HelmChart.template ignoreWarnings parameter', () => {
 
       await helmChart.template(dir, valueFiles, options, true)
 
-      expect(execMock).toHaveBeenCalledWith(
-        expect.stringContaining('--skip-tests --include-crds')
-      )
+      expect(execMock).toHaveBeenCalledWith(expect.stringContaining('--skip-tests --include-crds'))
     })
   })
 })
