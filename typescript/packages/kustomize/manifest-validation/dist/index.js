@@ -66759,8 +66759,8 @@ async function run() {
             { data: 'Result', header: true },
             { data: 'Folder', header: true }
         ];
-        let summaryRawContent = '<details><summary>Found following Kustomize projects...</summary>\n\n```yaml\n' + yaml.stringify(kustomizeListingYamlDoc) + '\n```\n\n</details>';
-        core.summary.addHeading('Kustomize Manifest Validation Results').addRaw(summaryRawContent);
+        const projectCount = Object.keys(kustomizeListingYamlDoc.toJSON()).length;
+        core.summary.addHeading('Kustomize Manifest Validation Results').addRaw(`\n\nProcessing ${projectCount} project(s) from listing.\n\n`);
         // loop through all kustomize projects and validate manifests
         for (const item of Object.keys(kustomizeListingYamlDoc.toJSON())) {
             let yamlitem = dist_1.utils.unrapYamlbyKey(kustomizeListingYamlDoc, item);
