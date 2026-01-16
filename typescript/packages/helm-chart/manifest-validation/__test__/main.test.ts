@@ -70,7 +70,8 @@ describe('main.run with ignoreWarnings option', () => {
               getListingFileContent: jest.fn(() => 'listing-content'),
               template: jest.fn(),
               getHelmValueFiles: jest.fn(() => '-f /path/values.yaml'),
-              readPipelineFeatureOptions: jest.fn(() => false)
+              readPipelineFeatureOptions: jest.fn(() => false),
+              readPipelineFeatureConfig: jest.fn(() => false)
             }))
           }
         }
@@ -94,6 +95,8 @@ describe('main.run with ignoreWarnings option', () => {
   function setupHelmChartListingDoc(options: any) {
     process.env.GITHUB_WORKSPACE = '/test/workspace'
 
+    const featureConfigDoc = options ? parseDocument(options) : false
+
     helmChartInstanceMock = {
       getListingFileContent: jest.fn().mockReturnValue(`test-chart:
   dir: /test/workspace/charts/test-chart
@@ -103,7 +106,9 @@ describe('main.run with ignoreWarnings option', () => {
   manifestPath: charts`),
       template: jest.fn().mockResolvedValue(undefined),
       getHelmValueFiles: jest.fn().mockReturnValue('-f /test/workspace/charts/test-chart/values.yaml'),
-      readPipelineFeatureOptions: jest.fn().mockReturnValue(options ? parseDocument(options) : false)
+      // If there's an 'options' sub-key, return it; otherwise return the full config for backward compatibility
+      readPipelineFeatureOptions: jest.fn().mockReturnValue(featureConfigDoc ? featureConfigDoc.get('options') || featureConfigDoc : false),
+      readPipelineFeatureConfig: jest.fn().mockReturnValue(featureConfigDoc)
     }
 
     utils.HelmChart.getInstance.mockReturnValue(helmChartInstanceMock)

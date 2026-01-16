@@ -8,6 +8,24 @@ export declare function findYamlKeyByDir(yamlContent: string, targetDir: string)
 export declare function readYamlFile(dir: path.FormatInputPathObject): yaml.Document extends true ? unknown : any;
 export declare function isFunctionEnabled(dir: path.FormatInputPathObject, functionName: string, defaultBehavior?: boolean): boolean;
 export declare function isFileFoundInPath(file: string, dir: path.FormatInputPathObject, cwd: path.FormatInputPathObject): string | boolean;
+/**
+ * Detect which Helm chart directories have been modified by comparing current branch with base branch
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @returns Set of chart directory paths that have been modified
+ */
+export declare function detectChangedHelmChartDirs(pathGitRepository: path.FormatInputPathObject, branchName?: string, baseBranchName?: string): Promise<Set<string>>;
+/**
+ * Detect which Kustomize project directories have been modified by comparing current branch with base branch
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @returns Set of kustomize project directory paths that have been modified
+ */
+export declare function detectChangedKustomizeDirs(pathGitRepository: path.FormatInputPathObject, branchName?: string, baseBranchName?: string): Promise<Set<string>>;
 export declare const removeDuplicatesFromStringArray: (arr: string[]) => string[];
 export declare function unrapYamlbyKey(yamlDoc: yaml.Document, key: string, defaultValue?: string | boolean): yaml.Document extends true ? unknown : any;
 export declare class Git {
@@ -52,6 +70,7 @@ export declare class HelmChart {
      * @returns The feature object if found, or false if not present.
      */
     readPipelineFeature(dir: path.FormatInputPathObject, functionName: string, featureName: string): yaml.Document | false;
+    readPipelineFeatureConfig(dir: path.FormatInputPathObject, functionName: string): yaml.Document | false;
     readPipelineFeatureOptions(dir: path.FormatInputPathObject, functionName: string): yaml.Document extends true ? unknown : any;
     generateReadmeDocumentation(dir: path.ParsedPath, templateFiles: string[], options?: string[]): Promise<string>;
 }

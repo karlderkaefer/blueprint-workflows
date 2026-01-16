@@ -23,8 +23,6 @@ export async function run(): Promise<void> {
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     core.startGroup('Helm Chart Linting')
 
-    let summaryRawContent: string = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>'
-
     let tableRows = []
     let tableHeader = [
       { data: 'UID Helm Chart', header: true },
@@ -32,7 +30,8 @@ export async function run(): Promise<void> {
       { data: 'Folder', header: true }
     ]
 
-    core.summary.addHeading('Helm Chart Linting Results').addRaw(summaryRawContent)
+    const chartCount = Object.keys(helmChartListingYamlDoc.toJSON()).length
+    core.summary.addHeading('Helm Chart Linting Results').addRaw(`\n\nProcessing ${chartCount} chart(s) from listing.\n\n`)
     // loop through all helm charts and do dependency update
     for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
       let yamlitem = utils.unrapYamlbyKey(helmChartListingYamlDoc, item)

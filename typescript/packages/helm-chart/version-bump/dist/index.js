@@ -58290,6 +58290,8 @@ exports.findYamlKeyByDir = findYamlKeyByDir;
 exports.readYamlFile = readYamlFile;
 exports.isFunctionEnabled = isFunctionEnabled;
 exports.isFileFoundInPath = isFileFoundInPath;
+exports.detectChangedHelmChartDirs = detectChangedHelmChartDirs;
+exports.detectChangedKustomizeDirs = detectChangedKustomizeDirs;
 exports.unrapYamlbyKey = unrapYamlbyKey;
 const fs = __importStar(__nccwpck_require2_(9896));
 const path = __importStar(__nccwpck_require2_(6928));
@@ -58372,6 +58374,117 @@ function isFileFoundInPath(file, dir, cwd) {
         return false;
     }
     return isFileFoundInPath(file, path.parse(path.dirname(path.format(dir))), cwd);
+}
+/**
+ * Detect which Helm chart directories have been modified by comparing current branch with base branch
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @returns Set of chart directory paths that have been modified
+ */
+async function detectChangedHelmChartDirs(pathGitRepository, branchName, baseBranchName = 'main') {
+    const utilsHelmChart = HelmChart.getInstance();
+    const workspace = path.format(pathGitRepository);
+    if (!branchName) {
+        console.log('BRANCH_NAME not provided, returning empty set');
+        return new Set();
+    }
+    try {
+        // Fetch the base branch to ensure we have the latest
+        console.log(`Fetching base branch: ${baseBranchName}`);
+        await utilsHelmChart.exec(`git fetch origin ${baseBranchName}:refs/remotes/origin/${baseBranchName}`, [], { cwd: workspace });
+        // Compare HEAD (current PR branch) with base branch
+        const result = await utilsHelmChart.exec(`git diff --name-only "origin/${baseBranchName}...HEAD"`, [], { cwd: workspace });
+        return findChartDirsFromChangedFiles(result.stdout, pathGitRepository);
+    }
+    catch (error) {
+        console.error('Failed to detect changed Helm charts:', error);
+        return new Set();
+    }
+}
+/**
+ * Helper function to find chart directories from a list of changed files
+ */
+function findChartDirsFromChangedFiles(changedFilesOutput, pathGitRepository) {
+    const changedFiles = changedFilesOutput.split('\n').filter(f => f.trim() !== '');
+    console.log(`Found ${changedFiles.length} changed file(s)`);
+    const changedChartDirs = new Set();
+    for (const filePath of changedFiles) {
+        // Check if this is a Chart.yaml file being deleted
+        if (filePath.endsWith(constants.HelmChartFiles.Chartyaml)) {
+            // For deleted Chart.yaml files, extract the directory path directly
+            const chartDir = path.dirname(filePath);
+            changedChartDirs.add(path.resolve(path.format(pathGitRepository), chartDir));
+            console.log(`Detected deleted/modified chart: ${chartDir}`);
+            continue;
+        }
+        // For other files, walk up to find Chart.yaml in current filesystem
+        const chartDir = isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(filePath), pathGitRepository);
+        if (chartDir !== false) {
+            changedChartDirs.add(String(chartDir));
+            console.log(`Detected change in chart directory: ${chartDir}`);
+        }
+    }
+    return changedChartDirs;
+}
+/**
+ * Detect which Kustomize project directories have been modified by comparing current branch with base branch
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @returns Set of kustomize project directory paths that have been modified
+ */
+async function detectChangedKustomizeDirs(pathGitRepository, branchName, baseBranchName = 'main') {
+    const utilsKustomize = Kustomize.getInstance();
+    const workspace = path.format(pathGitRepository);
+    if (!branchName) {
+        console.log('BRANCH_NAME not provided, returning empty set');
+        return new Set();
+    }
+    try {
+        // Fetch the base branch to ensure we have the latest
+        console.log(`Fetching base branch: ${baseBranchName}`);
+        await utilsKustomize.exec(`git fetch origin ${baseBranchName}:refs/remotes/origin/${baseBranchName}`, [], { cwd: workspace });
+        // Compare HEAD (current PR branch) with base branch
+        const result = await utilsKustomize.exec(`git diff --name-only "origin/${baseBranchName}...HEAD"`, [], { cwd: workspace });
+        return findKustomizeDirsFromChangedFiles(result.stdout, pathGitRepository);
+    }
+    catch (error) {
+        console.error('Failed to detect changed Kustomize projects:', error);
+        return new Set();
+    }
+}
+/**
+ * Helper function to find kustomize project directories from a list of changed files
+ */
+function findKustomizeDirsFromChangedFiles(changedFilesOutput, pathGitRepository) {
+    const changedFiles = changedFilesOutput.split('\n').filter(f => f.trim() !== '');
+    console.log(`Found ${changedFiles.length} changed file(s)`);
+    const changedKustomizeDirs = new Set();
+    for (const filePath of changedFiles) {
+        // Check if this is a kustomization.yaml or kustomization.yml file being deleted
+        if (filePath.endsWith(constants.KustomizeFiles.KustomizationYaml) || filePath.endsWith(constants.KustomizeFiles.KustomizationYml)) {
+            // For deleted kustomization files, extract the directory path directly
+            const kustomizeDir = path.dirname(filePath);
+            changedKustomizeDirs.add(path.resolve(path.format(pathGitRepository), kustomizeDir));
+            console.log(`Detected deleted/modified kustomize project: ${kustomizeDir}`);
+            continue;
+        }
+        // For other files, walk up to find kustomization.yaml or kustomization.yml in current filesystem
+        const kustomizeDirYaml = isFileFoundInPath(constants.KustomizeFiles.KustomizationYaml, path.parse(filePath), pathGitRepository);
+        const kustomizeDirYml = isFileFoundInPath(constants.KustomizeFiles.KustomizationYml, path.parse(filePath), pathGitRepository);
+        if (kustomizeDirYaml !== false) {
+            changedKustomizeDirs.add(String(kustomizeDirYaml));
+            console.log(`Detected change in kustomize project directory: ${kustomizeDirYaml}`);
+        }
+        else if (kustomizeDirYml !== false) {
+            changedKustomizeDirs.add(String(kustomizeDirYml));
+            console.log(`Detected change in kustomize project directory: ${kustomizeDirYml}`);
+        }
+    }
+    return changedKustomizeDirs;
 }
 const removeDuplicatesFromStringArray = (arr) => {
     let unique = arr.reduce(function (acc, curr) {
@@ -58550,17 +58663,20 @@ class HelmChart {
             cmdOptions = options?.join(' ');
         }
         let cmdExec = 'helm template helm-release-name "' + path.format(dir) + '" ' + valueFiles + ' ' + cmdOptions;
+        console.log(`Executing helm template for ${path.format(dir)} with ignoreWarnings=${ignoreWarnings}`);
         let result = await this.exec(cmdExec);
-        if (!ignoreWarnings) {
-            if (result.stderr && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
-                throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr);
-            }
+        // Check for actual errors (non-zero exit code)
+        if (result.exitCode !== 0) {
+            throw new Error(this.constructor.name + '() Helm Chart ' + path.format(dir) + ' exitCode: ' + result.exitCode + ' stdErr: ' + result.stderr);
+        }
+        // Check for warnings in stderr (only if ignoreWarnings is false)
+        // Allow "WARNING: This chart is deprecated" as it's a common acceptable warning
+        console.log(`Checking warnings: ignoreWarnings=${ignoreWarnings}, stderr="${result.stderr}"`);
+        if (!ignoreWarnings && result.stderr && result.stderr.trim() !== '' && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
+            throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr);
         }
         if (result.stdout.length === 0 || result.stdout.length === 1 || result.stdout.length < 50 || result.stdout === null || result.stdout == '' || result.stdout == ' ') {
             throw new Error('Helm Chart ' + path.format(dir) + ' Templating failed with empty manifest!\n' + result.stdout + result.stderr);
-        }
-        if (result.exitCode !== 0 && result.stderr) {
-            throw new Error(this.lint.name + '() Helm Chart ' + path.format(dir) + ' exitCode: ' + result.exitCode + ' stdErr: ' + result.stderr);
         }
         return result.stdout;
     }
@@ -58621,7 +58737,7 @@ class HelmChart {
         }
         return featureSection;
     }
-    readPipelineFeatureOptions(dir, functionName) {
+    readPipelineFeatureConfig(dir, functionName) {
         if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
             return false;
         }
@@ -58629,11 +58745,17 @@ class HelmChart {
         if (unrapYamlbyKey(ciConfigFileDoc, functionName, false) === false) {
             return false;
         }
-        const yamlContent = unrapYamlbyKey(ciConfigFileDoc, functionName);
-        if (unrapYamlbyKey(yamlContent, 'options', false) === false) {
+        return unrapYamlbyKey(ciConfigFileDoc, functionName);
+    }
+    readPipelineFeatureOptions(dir, functionName) {
+        const featureConfig = this.readPipelineFeatureConfig(dir, functionName);
+        if (featureConfig === false) {
             return false;
         }
-        return unrapYamlbyKey(yamlContent, 'options');
+        if (unrapYamlbyKey(featureConfig, 'options', false) === false) {
+            return false;
+        }
+        return unrapYamlbyKey(featureConfig, 'options');
     }
     async generateReadmeDocumentation(dir, templateFiles, options) {
         let helmDocsTemplateFiles = [];
@@ -69351,7 +69473,6 @@ async function run() {
         let helmChartListingYamlDoc = new yaml.Document(yaml.parse(helmChartListingFileContent));
         ///////////////////////////////////////////////////////////////////////////////////////////////////
         core.startGroup('Helm Chart Version Bump - modified files compared to ' + BASE_BRANCH_NAME);
-        let summaryRawContent = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>';
         let tableRows = [];
         let tableHeader = [
             { data: 'Helm Chart', header: true },
@@ -69409,7 +69530,8 @@ async function run() {
             }
         });
         let summaryRawContentModifiedFiles = '<details><summary>Modified Files</summary>\n\n```yaml\n' + yaml.stringify(folders) + '\n```\n\n</details>';
-        core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent);
+        const chartCount = Object.keys(helmChartListingYamlDoc.toJSON()).length;
+        core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(`\n\nProcessing ${chartCount} chart(s) from listing.\n\n`);
         console.log('Looking for ' + dist_1.constants.HelmChartFiles.Chartyaml + ' files');
         let cmdChartSearch = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + dist_1.constants.HelmChartFiles.Chartyaml + ' || true"';
         let resultFiles = await utilsHelmChart.exec(cmdChartSearch, [], { cwd: GITHUB_WORKSPACE });

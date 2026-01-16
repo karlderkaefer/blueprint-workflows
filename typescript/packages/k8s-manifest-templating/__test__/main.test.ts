@@ -57,6 +57,7 @@ describe('main.run manifest templating scenarios', () => {
         utils: {
           ...actualUtils.utils,
           isFunctionEnabled: jest.fn(),
+          lookup: jest.fn(() => ['test-chart-path']),
           HelmChart: {
             ...actualUtils.utils.HelmChart,
             getInstance: jest.fn(() => ({
