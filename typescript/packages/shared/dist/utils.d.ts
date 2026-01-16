@@ -17,6 +17,15 @@ export declare function isFileFoundInPath(file: string, dir: path.FormatInputPat
  * @returns Set of chart directory paths that have been modified
  */
 export declare function detectChangedHelmChartDirs(pathGitRepository: path.FormatInputPathObject, branchName?: string, baseBranchName?: string): Promise<Set<string>>;
+/**
+ * Detect which Kustomize project directories have been modified by comparing current branch with base branch
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @returns Set of kustomize project directory paths that have been modified
+ */
+export declare function detectChangedKustomizeDirs(pathGitRepository: path.FormatInputPathObject, branchName?: string, baseBranchName?: string): Promise<Set<string>>;
 export declare const removeDuplicatesFromStringArray: (arr: string[]) => string[];
 export declare function unrapYamlbyKey(yamlDoc: yaml.Document, key: string, defaultValue?: string | boolean): yaml.Document extends true ? unknown : any;
 export declare class Git {

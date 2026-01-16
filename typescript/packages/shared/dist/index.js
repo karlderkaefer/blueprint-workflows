@@ -29928,6 +29928,7 @@ exports.readYamlFile = readYamlFile;
 exports.isFunctionEnabled = isFunctionEnabled;
 exports.isFileFoundInPath = isFileFoundInPath;
 exports.detectChangedHelmChartDirs = detectChangedHelmChartDirs;
+exports.detectChangedKustomizeDirs = detectChangedKustomizeDirs;
 exports.unrapYamlbyKey = unrapYamlbyKey;
 const fs = __importStar(__nccwpck_require__(9896));
 const path = __importStar(__nccwpck_require__(6928));
@@ -30063,6 +30064,64 @@ function findChartDirsFromChangedFiles(changedFilesOutput, pathGitRepository) {
         }
     }
     return changedChartDirs;
+}
+/**
+ * Detect which Kustomize project directories have been modified by comparing current branch with base branch
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @returns Set of kustomize project directory paths that have been modified
+ */
+async function detectChangedKustomizeDirs(pathGitRepository, branchName, baseBranchName = 'main') {
+    const utilsKustomize = Kustomize.getInstance();
+    const workspace = path.format(pathGitRepository);
+    if (!branchName) {
+        console.log('BRANCH_NAME not provided, returning empty set');
+        return new Set();
+    }
+    try {
+        // Fetch the base branch to ensure we have the latest
+        console.log(`Fetching base branch: ${baseBranchName}`);
+        await utilsKustomize.exec(`git fetch origin ${baseBranchName}:refs/remotes/origin/${baseBranchName}`, [], { cwd: workspace });
+        // Compare HEAD (current PR branch) with base branch
+        const result = await utilsKustomize.exec(`git diff --name-only "origin/${baseBranchName}...HEAD"`, [], { cwd: workspace });
+        return findKustomizeDirsFromChangedFiles(result.stdout, pathGitRepository);
+    }
+    catch (error) {
+        console.error('Failed to detect changed Kustomize projects:', error);
+        return new Set();
+    }
+}
+/**
+ * Helper function to find kustomize project directories from a list of changed files
+ */
+function findKustomizeDirsFromChangedFiles(changedFilesOutput, pathGitRepository) {
+    const changedFiles = changedFilesOutput.split('\n').filter(f => f.trim() !== '');
+    console.log(`Found ${changedFiles.length} changed file(s)`);
+    const changedKustomizeDirs = new Set();
+    for (const filePath of changedFiles) {
+        // Check if this is a kustomization.yaml or kustomization.yml file being deleted
+        if (filePath.endsWith(constants.KustomizeFiles.KustomizationYaml) || filePath.endsWith(constants.KustomizeFiles.KustomizationYml)) {
+            // For deleted kustomization files, extract the directory path directly
+            const kustomizeDir = path.dirname(filePath);
+            changedKustomizeDirs.add(path.resolve(path.format(pathGitRepository), kustomizeDir));
+            console.log(`Detected deleted/modified kustomize project: ${kustomizeDir}`);
+            continue;
+        }
+        // For other files, walk up to find kustomization.yaml or kustomization.yml in current filesystem
+        const kustomizeDirYaml = isFileFoundInPath(constants.KustomizeFiles.KustomizationYaml, path.parse(filePath), pathGitRepository);
+        const kustomizeDirYml = isFileFoundInPath(constants.KustomizeFiles.KustomizationYml, path.parse(filePath), pathGitRepository);
+        if (kustomizeDirYaml !== false) {
+            changedKustomizeDirs.add(String(kustomizeDirYaml));
+            console.log(`Detected change in kustomize project directory: ${kustomizeDirYaml}`);
+        }
+        else if (kustomizeDirYml !== false) {
+            changedKustomizeDirs.add(String(kustomizeDirYml));
+            console.log(`Detected change in kustomize project directory: ${kustomizeDirYml}`);
+        }
+    }
+    return changedKustomizeDirs;
 }
 const removeDuplicatesFromStringArray = (arr) => {
     let unique = arr.reduce(function (acc, curr) {
