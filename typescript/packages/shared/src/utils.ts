@@ -424,8 +424,9 @@ export class HelmChart {
     }
 
     // Check for warnings in stderr (only if ignoreWarnings is false)
-    if (!ignoreWarnings && result.stderr && result.stderr.trim() !== '') {
-      throw new Error('Helm Chart ' + path.format(dir) + ' has warnings! stderr: ' + result.stderr)
+    // Allow "WARNING: This chart is deprecated" as it's a common acceptable warning
+    if (!ignoreWarnings && result.stderr && result.stderr.trim() !== '' && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
+      throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr)
     }
 
     if (result.stdout.length === 0 || result.stdout.length === 1 || result.stdout.length < 50 || result.stdout === null || result.stdout == '' || result.stdout == ' ') {
