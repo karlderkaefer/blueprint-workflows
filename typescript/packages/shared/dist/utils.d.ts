@@ -70,6 +70,7 @@ export declare class HelmChart {
      * @returns The feature object if found, or false if not present.
      */
     readPipelineFeature(dir: path.FormatInputPathObject, functionName: string, featureName: string): yaml.Document | false;
+    readPipelineFeatureConfig(dir: path.FormatInputPathObject, functionName: string): yaml.Document | false;
     readPipelineFeatureOptions(dir: path.FormatInputPathObject, functionName: string): yaml.Document extends true ? unknown : any;
     generateReadmeDocumentation(dir: path.ParsedPath, templateFiles: string[], options?: string[]): Promise<string>;
 }
