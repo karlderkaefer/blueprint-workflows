@@ -418,17 +418,18 @@ export class HelmChart {
 
     let result: exec2.ExecOutput = await this.exec(cmdExec)
 
-    if (!ignoreWarnings) {
-      if (result.stderr && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
-        throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr)
-      }
-    }
-    if (result.stdout.length === 0 || result.stdout.length === 1 || result.stdout.length < 50 || result.stdout === null || result.stdout == '' || result.stdout == ' ') {
-      throw new Error('Helm Chart ' + path.format(dir) + ' Templating failed with empty manifest!\n' + result.stdout + result.stderr)
+    // Check for actual errors (non-zero exit code)
+    if (result.exitCode !== 0) {
+      throw new Error(this.constructor.name + '() Helm Chart ' + path.format(dir) + ' exitCode: ' + result.exitCode + ' stdErr: ' + result.stderr)
     }
 
-    if (result.exitCode !== 0 && result.stderr) {
-      throw new Error(this.lint.name + '() Helm Chart ' + path.format(dir) + ' exitCode: ' + result.exitCode + ' stdErr: ' + result.stderr)
+    // Check for warnings in stderr (only if ignoreWarnings is false)
+    if (!ignoreWarnings && result.stderr && result.stderr.trim() !== '') {
+      throw new Error('Helm Chart ' + path.format(dir) + ' has warnings! stderr: ' + result.stderr)
+    }
+
+    if (result.stdout.length === 0 || result.stdout.length === 1 || result.stdout.length < 50 || result.stdout === null || result.stdout == '' || result.stdout == ' ') {
+      throw new Error('Helm Chart ' + path.format(dir) + ' Templating failed with empty manifest!\n' + result.stdout + result.stderr)
     }
     return result.stdout
   }
