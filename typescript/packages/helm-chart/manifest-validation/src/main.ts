@@ -62,7 +62,15 @@ export async function run(): Promise<void> {
           helmOptions.push('--dependency-update')
         }
 
-        const ignoreWarnings = utils.unrapYamlbyKey(options, 'ignoreWarnings', false)
+        // Read ignoreWarnings from the feature config (not from options)
+        let ignoreWarnings = false
+        const featureConfig = utilsHelmChart.readPipelineFeatureConfig(dir, constants.Functionality.helmChartValidation)
+        if (featureConfig !== false) {
+          ignoreWarnings = utils.unrapYamlbyKey(featureConfig, 'ignoreWarnings', false)
+        }
+
+        core.info(`Chart ${item}: ignoreWarnings=${ignoreWarnings}`)
+        core.debug(`Feature config for ${item}: ${featureConfig !== false ? JSON.stringify(featureConfig.toJSON()) : 'none'}`)
 
         await utilsHelmChart.template(dir, utilsHelmChart.getHelmValueFiles(dir), helmOptions, ignoreWarnings)
         tableRows.push([item, '✅', listingYamlRelativePath])

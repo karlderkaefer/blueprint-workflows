@@ -416,6 +416,8 @@ export class HelmChart {
     }
     let cmdExec = 'helm template helm-release-name "' + path.format(dir) + '" ' + valueFiles + ' ' + cmdOptions
 
+    console.log(`Executing helm template for ${path.format(dir)} with ignoreWarnings=${ignoreWarnings}`)
+
     let result: exec2.ExecOutput = await this.exec(cmdExec)
 
     // Check for actual errors (non-zero exit code)
@@ -425,6 +427,7 @@ export class HelmChart {
 
     // Check for warnings in stderr (only if ignoreWarnings is false)
     // Allow "WARNING: This chart is deprecated" as it's a common acceptable warning
+    console.log(`Checking warnings: ignoreWarnings=${ignoreWarnings}, stderr="${result.stderr}"`)
     if (!ignoreWarnings && result.stderr && result.stderr.trim() !== '' && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
       throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr)
     }
@@ -501,7 +504,7 @@ export class HelmChart {
     return featureSection
   }
 
-  public readPipelineFeatureOptions(dir: path.FormatInputPathObject, functionName: string): yaml.Document extends true ? unknown : any {
+  public readPipelineFeatureConfig(dir: path.FormatInputPathObject, functionName: string): yaml.Document | false {
     if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {
       return false
     }
@@ -510,12 +513,19 @@ export class HelmChart {
     if (unrapYamlbyKey(ciConfigFileDoc, functionName, false) === false) {
       return false
     }
-    const yamlContent: yaml.Document = unrapYamlbyKey(ciConfigFileDoc, functionName)
+    return unrapYamlbyKey(ciConfigFileDoc, functionName)
+  }
 
-    if (unrapYamlbyKey(yamlContent, 'options', false) === false) {
+  public readPipelineFeatureOptions(dir: path.FormatInputPathObject, functionName: string): yaml.Document extends true ? unknown : any {
+    const featureConfig = this.readPipelineFeatureConfig(dir, functionName)
+    if (featureConfig === false) {
       return false
     }
-    return unrapYamlbyKey(yamlContent, 'options')
+
+    if (unrapYamlbyKey(featureConfig, 'options', false) === false) {
+      return false
+    }
+    return unrapYamlbyKey(featureConfig, 'options')
   }
   public async generateReadmeDocumentation(dir: path.ParsedPath, templateFiles: string[], options?: string[]) {
     let helmDocsTemplateFiles: string[] = []
