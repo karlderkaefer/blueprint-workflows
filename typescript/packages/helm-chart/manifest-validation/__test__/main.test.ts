@@ -106,7 +106,8 @@ describe('main.run with ignoreWarnings option', () => {
   manifestPath: charts`),
       template: jest.fn().mockResolvedValue(undefined),
       getHelmValueFiles: jest.fn().mockReturnValue('-f /test/workspace/charts/test-chart/values.yaml'),
-      readPipelineFeatureOptions: jest.fn().mockReturnValue(featureConfigDoc ? featureConfigDoc.get('options') || false : false),
+      // If there's an 'options' sub-key, return it; otherwise return the full config for backward compatibility
+      readPipelineFeatureOptions: jest.fn().mockReturnValue(featureConfigDoc ? (featureConfigDoc.get('options') || featureConfigDoc) : false),
       readPipelineFeatureConfig: jest.fn().mockReturnValue(featureConfigDoc)
     }
 
