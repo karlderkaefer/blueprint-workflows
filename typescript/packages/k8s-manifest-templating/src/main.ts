@@ -191,6 +191,19 @@ export async function run(): Promise<void> {
       const kustomizeListingFileContent = fs.readFileSync(kustomizeListingPath, 'utf8')
       const kustomizeListingYamlDoc = new yaml.Document(yaml.parse(kustomizeListingFileContent))
 
+      // Detect if we're using filtered listing by comparing with all available kustomize projects
+      const allKustomizeYamlProjects = utils.lookup(GITHUB_WORKSPACE, constants.KustomizeFiles.KustomizationYaml)
+      const allKustomizeYmlProjects = utils.lookup(GITHUB_WORKSPACE, constants.KustomizeFiles.KustomizationYml)
+      const allKustomizeProjects = [...new Set([...allKustomizeYamlProjects, ...allKustomizeYmlProjects])]
+      const kustomizeProjectsInListing = Object.keys(kustomizeListingYamlDoc.toJSON()).length
+      const isFilteredKustomizeListing = kustomizeProjectsInListing < allKustomizeProjects.length
+
+      if (isFilteredKustomizeListing) {
+        core.info(`Filtered Kustomize listing detected (${kustomizeProjectsInListing} of ${allKustomizeProjects.length} projects). Using selective manifest updates.`)
+      } else {
+        core.info(`Full Kustomize listing detected (${kustomizeProjectsInListing} projects). Processing all Kustomize projects.`)
+      }
+
       for (const item of Object.keys(kustomizeListingYamlDoc.toJSON())) {
         core.info('Processing Kustomize Project UID:' + item)
         let yamlitem = utils.unrapYamlbyKey(kustomizeListingYamlDoc as any, item)
