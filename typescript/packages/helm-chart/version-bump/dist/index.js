@@ -69464,7 +69464,6 @@ async function run() {
         let helmChartListingYamlDoc = new yaml.Document(yaml.parse(helmChartListingFileContent));
         ///////////////////////////////////////////////////////////////////////////////////////////////////
         core.startGroup('Helm Chart Version Bump - modified files compared to ' + BASE_BRANCH_NAME);
-        let summaryRawContent = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>';
         let tableRows = [];
         let tableHeader = [
             { data: 'Helm Chart', header: true },
@@ -69522,7 +69521,8 @@ async function run() {
             }
         });
         let summaryRawContentModifiedFiles = '<details><summary>Modified Files</summary>\n\n```yaml\n' + yaml.stringify(folders) + '\n```\n\n</details>';
-        core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(summaryRawContent);
+        const chartCount = Object.keys(helmChartListingYamlDoc.toJSON()).length;
+        core.summary.addHeading('Helm Chart Version Bump Results').addRaw(summaryRawContentModifiedFiles).addRaw(`\n\nProcessing ${chartCount} chart(s) from listing.\n\n`);
         console.log('Looking for ' + dist_1.constants.HelmChartFiles.Chartyaml + ' files');
         let cmdChartSearch = '/bin/bash -c "git ls-tree -r \"origin/' + BASE_BRANCH_NAME + '\" --name-only | grep ' + dist_1.constants.HelmChartFiles.Chartyaml + ' || true"';
         let resultFiles = await utilsHelmChart.exec(cmdChartSearch, [], { cwd: GITHUB_WORKSPACE });
