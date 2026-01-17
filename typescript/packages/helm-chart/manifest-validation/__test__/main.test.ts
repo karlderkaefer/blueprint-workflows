@@ -174,7 +174,7 @@ ignoreWarnings: true`
       await main.run()
 
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringContaining('ignoreWarnings must be an array of regex patterns, not a boolean')
+        expect.stringContaining("'ignoreWarnings' must be an array of regex patterns, not a boolean")
       )
     })
 
@@ -187,7 +187,7 @@ ignoreWarnings: false`
       await main.run()
 
       expect(core.setFailed).toHaveBeenCalledWith(
-        expect.stringContaining('ignoreWarnings must be an array of regex patterns, not a boolean')
+        expect.stringContaining("'ignoreWarnings' must be an array of regex patterns, not a boolean")
       )
     })
 
