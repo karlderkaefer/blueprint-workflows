@@ -120,20 +120,52 @@ describe('main.run with ignoreWarnings option', () => {
       if (value === undefined || value === null) {
         return defaultValue
       }
+      // Convert YAML sequence to array
+      if (value && typeof value.toJSON === 'function') {
+        return value.toJSON()
+      }
       return value
     })
   }
 
   describe('ignoreWarnings option from YAML config', () => {
-    it('should pass ignoreWarnings=false when option is not set (default)', async () => {
+    it('should pass ignoreWarnings=undefined when option is not set (default)', async () => {
       setupHelmChartListingDoc('')
 
       await main.run()
 
-      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), false)
+      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), undefined)
     })
 
-    it('should pass ignoreWarnings=true when option is set to true', async () => {
+    it('should pass ignoreWarnings array when option is set to array', async () => {
+      const options = `--dependency-update: true
+ignoreWarnings:
+  - "^walk\\\\.go:\\\\d+: found symbolic link in path: .*"`
+
+      setupHelmChartListingDoc(options)
+
+      await main.run()
+
+      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        ['^walk\\.go:\\d+: found symbolic link in path: .*']
+      )
+    })
+
+    it('should pass empty array when ignoreWarnings is empty array', async () => {
+      const options = `--dependency-update: true
+ignoreWarnings: []`
+
+      setupHelmChartListingDoc(options)
+
+      await main.run()
+
+      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), [])
+    })
+
+    it('should throw error when ignoreWarnings is set to boolean true', async () => {
       const options = `--dependency-update: true
 ignoreWarnings: true`
 
@@ -141,10 +173,12 @@ ignoreWarnings: true`
 
       await main.run()
 
-      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), true)
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining('ignoreWarnings must be an array of regex patterns, not a boolean')
+      )
     })
 
-    it('should pass ignoreWarnings=false when option is explicitly set to false', async () => {
+    it('should throw error when ignoreWarnings is set to boolean false', async () => {
       const options = `--dependency-update: true
 ignoreWarnings: false`
 
@@ -152,14 +186,18 @@ ignoreWarnings: false`
 
       await main.run()
 
-      expect(helmChartInstanceMock.template).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), false)
+      expect(core.setFailed).toHaveBeenCalledWith(
+        expect.stringContaining('ignoreWarnings must be an array of regex patterns, not a boolean')
+      )
     })
 
-    it('should handle ignoreWarnings with other helm options', async () => {
+    it('should handle multiple patterns in ignoreWarnings array', async () => {
       const options = `--skip-crds: true
 --skip-tests: true
 --dependency-update: true
-ignoreWarnings: true`
+ignoreWarnings:
+  - "^walk\\\\.go:\\\\d+: found symbolic link in path: .*"
+  - "^WARNING: Template expansion encountered symlinks"`
 
       setupHelmChartListingDoc(options)
 
@@ -168,7 +206,7 @@ ignoreWarnings: true`
       // Verify ignoreWarnings is passed correctly
       const templateCalls = helmChartInstanceMock.template.mock.calls
       expect(templateCalls.length).toBe(1)
-      expect(templateCalls[0][3]).toBe(true) // 4th parameter should be ignoreWarnings=true
+      expect(templateCalls[0][3]).toEqual(['^walk\\.go:\\d+: found symbolic link in path: .*', '^WARNING: Template expansion encountered symlinks'])
 
       // Verify helm options are passed correctly
       const helmOptions = templateCalls[0][2]
@@ -179,8 +217,9 @@ ignoreWarnings: true`
   })
 
   describe('integration with helm chart validation workflow', () => {
-    it('should call template with correct parameters including ignoreWarnings', async () => {
-      const options = `ignoreWarnings: true`
+    it('should call template with correct parameters including ignoreWarnings array', async () => {
+      const options = `ignoreWarnings:
+  - "^test-pattern.*"`
 
       setupHelmChartListingDoc(options)
 
@@ -188,21 +227,17 @@ ignoreWarnings: true`
 
       expect(helmChartInstanceMock.template).toHaveBeenCalledTimes(1)
 
-      const [dir, valueFiles, helmOptions, ignoreWarnings] = helmChartInstanceMock.template.mock.calls[0]
+      const [, valueFiles, helmOptions, ignoreWarnings] = helmChartInstanceMock.template.mock.calls[0]
 
-      expect(dir).toEqual(
-        expect.objectContaining({
-          dir: '/test/workspace/charts/test-chart'
-        })
-      )
       expect(valueFiles).toBe('-f /test/workspace/charts/test-chart/values.yaml')
       expect(Array.isArray(helmOptions)).toBe(true)
-      expect(ignoreWarnings).toBe(true)
+      expect(ignoreWarnings).toEqual(['^test-pattern.*'])
     })
 
-    it('should handle validation enabled with ignoreWarnings', async () => {
+    it('should handle validation enabled with ignoreWarnings array', async () => {
       const options = `--dependency-update: false
-ignoreWarnings: true`
+ignoreWarnings:
+  - "^pattern.*"`
 
       setupHelmChartListingDoc(options)
       utils.isFunctionEnabled.mockReturnValue(true)
@@ -215,7 +250,8 @@ ignoreWarnings: true`
     })
 
     it('should not call template when validation is disabled regardless of ignoreWarnings', async () => {
-      const options = `ignoreWarnings: true`
+      const options = `ignoreWarnings:
+  - "^pattern.*"`
 
       setupHelmChartListingDoc(options)
       utils.isFunctionEnabled.mockReturnValue(false) // Validation disabled
@@ -227,8 +263,9 @@ ignoreWarnings: true`
   })
 
   describe('error handling with ignoreWarnings', () => {
-    it('should catch and handle errors from template when ignoreWarnings is true', async () => {
-      const options = `ignoreWarnings: true`
+    it('should catch and handle errors from template when ignoreWarnings is array', async () => {
+      const options = `ignoreWarnings:
+  - "^pattern.*"`
 
       setupHelmChartListingDoc(options)
       helmChartInstanceMock.template.mockRejectedValue(new Error('Template error'))
@@ -238,8 +275,8 @@ ignoreWarnings: true`
       expect(core.setFailed).toHaveBeenCalledWith('Template error')
     })
 
-    it('should catch and handle errors from template when ignoreWarnings is false', async () => {
-      const options = `ignoreWarnings: false`
+    it('should catch and handle errors from template when ignoreWarnings is undefined', async () => {
+      const options = ``
 
       setupHelmChartListingDoc(options)
       helmChartInstanceMock.template.mockRejectedValue(new Error('Template error with warnings'))
@@ -251,8 +288,9 @@ ignoreWarnings: true`
   })
 
   describe('summary table generation with ignoreWarnings', () => {
-    it('should add successful validation to summary when ignoreWarnings is enabled', async () => {
-      const options = `ignoreWarnings: true`
+    it('should add successful validation to summary when ignoreWarnings is configured', async () => {
+      const options = `ignoreWarnings:
+  - "^pattern.*"`
 
       setupHelmChartListingDoc(options)
 
