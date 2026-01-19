@@ -29,9 +29,9 @@ export async function run(): Promise<void> {
       { data: 'Result', header: true },
       { data: 'Folder', header: true }
     ]
+    let summaryRawContent: string = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>'
 
-    const chartCount = Object.keys(helmChartListingYamlDoc.toJSON()).length
-    core.summary.addHeading('Helm Chart Manifest Validation Results').addRaw(`\n\nProcessing ${chartCount} chart(s) from listing.\n\n`)
+    core.summary.addHeading('Helm Chart Manifest Validation Results').addRaw(summaryRawContent)
 
     // loop through all helm charts and do dependency update
     for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
@@ -62,15 +62,8 @@ export async function run(): Promise<void> {
           helmOptions.push('--dependency-update')
         }
 
-        // Read ignoreWarnings from the feature config (not from options)
-        let ignoreWarnings = false
-        const featureConfig = utilsHelmChart.readPipelineFeatureConfig(dir, constants.Functionality.helmChartValidation)
-        if (featureConfig !== false) {
-          ignoreWarnings = utils.unrapYamlbyKey(featureConfig, 'ignoreWarnings', false)
-        }
-
-        core.info(`Chart ${item}: ignoreWarnings=${ignoreWarnings}`)
-        core.debug(`Feature config for ${item}: ${featureConfig !== false ? JSON.stringify(featureConfig.toJSON()) : 'none'}`)
+        // Read ignoreWarnings from the section level (not inside options)
+        const ignoreWarnings = utilsHelmChart.readIgnoreWarnings(dir, constants.Functionality.helmChartValidation)
 
         await utilsHelmChart.template(dir, utilsHelmChart.getHelmValueFiles(dir), helmOptions, ignoreWarnings)
         tableRows.push([item, '✅', listingYamlRelativePath])
