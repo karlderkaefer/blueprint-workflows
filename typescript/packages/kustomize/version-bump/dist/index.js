@@ -58290,6 +58290,8 @@ exports.findYamlKeyByDir = findYamlKeyByDir;
 exports.readYamlFile = readYamlFile;
 exports.isFunctionEnabled = isFunctionEnabled;
 exports.isFileFoundInPath = isFileFoundInPath;
+exports.detectChangedHelmChartDirs = detectChangedHelmChartDirs;
+exports.detectChangedKustomizeDirs = detectChangedKustomizeDirs;
 exports.unrapYamlbyKey = unrapYamlbyKey;
 const fs = __importStar(__nccwpck_require2_(9896));
 const path = __importStar(__nccwpck_require2_(6928));
@@ -58372,6 +58374,117 @@ function isFileFoundInPath(file, dir, cwd) {
         return false;
     }
     return isFileFoundInPath(file, path.parse(path.dirname(path.format(dir))), cwd);
+}
+/**
+ * Detect which Helm chart directories have been modified by comparing current branch with base branch
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @returns Set of chart directory paths that have been modified
+ */
+async function detectChangedHelmChartDirs(pathGitRepository, branchName, baseBranchName = 'main') {
+    const utilsHelmChart = HelmChart.getInstance();
+    const workspace = path.format(pathGitRepository);
+    if (!branchName) {
+        console.log('BRANCH_NAME not provided, returning empty set');
+        return new Set();
+    }
+    try {
+        // Fetch the base branch to ensure we have the latest
+        console.log(`Fetching base branch: ${baseBranchName}`);
+        await utilsHelmChart.exec(`git fetch origin ${baseBranchName}:refs/remotes/origin/${baseBranchName}`, [], { cwd: workspace });
+        // Compare HEAD (current PR branch) with base branch
+        const result = await utilsHelmChart.exec(`git diff --name-only "origin/${baseBranchName}...HEAD"`, [], { cwd: workspace });
+        return findChartDirsFromChangedFiles(result.stdout, pathGitRepository);
+    }
+    catch (error) {
+        console.error('Failed to detect changed Helm charts:', error);
+        return new Set();
+    }
+}
+/**
+ * Helper function to find chart directories from a list of changed files
+ */
+function findChartDirsFromChangedFiles(changedFilesOutput, pathGitRepository) {
+    const changedFiles = changedFilesOutput.split('\n').filter(f => f.trim() !== '');
+    console.log(`Found ${changedFiles.length} changed file(s)`);
+    const changedChartDirs = new Set();
+    for (const filePath of changedFiles) {
+        // Check if this is a Chart.yaml file being deleted
+        if (filePath.endsWith(constants.HelmChartFiles.Chartyaml)) {
+            // For deleted Chart.yaml files, extract the directory path directly
+            const chartDir = path.dirname(filePath);
+            changedChartDirs.add(path.resolve(path.format(pathGitRepository), chartDir));
+            console.log(`Detected deleted/modified chart: ${chartDir}`);
+            continue;
+        }
+        // For other files, walk up to find Chart.yaml in current filesystem
+        const chartDir = isFileFoundInPath(constants.HelmChartFiles.Chartyaml, path.parse(filePath), pathGitRepository);
+        if (chartDir !== false) {
+            changedChartDirs.add(String(chartDir));
+            console.log(`Detected change in chart directory: ${chartDir}`);
+        }
+    }
+    return changedChartDirs;
+}
+/**
+ * Detect which Kustomize project directories have been modified by comparing current branch with base branch
+ *
+ * @param pathGitRepository - Root path of the git repository
+ * @param branchName - Current branch name (PR head)
+ * @param baseBranchName - Base branch name (PR base)
+ * @returns Set of kustomize project directory paths that have been modified
+ */
+async function detectChangedKustomizeDirs(pathGitRepository, branchName, baseBranchName = 'main') {
+    const utilsKustomize = Kustomize.getInstance();
+    const workspace = path.format(pathGitRepository);
+    if (!branchName) {
+        console.log('BRANCH_NAME not provided, returning empty set');
+        return new Set();
+    }
+    try {
+        // Fetch the base branch to ensure we have the latest
+        console.log(`Fetching base branch: ${baseBranchName}`);
+        await utilsKustomize.exec(`git fetch origin ${baseBranchName}:refs/remotes/origin/${baseBranchName}`, [], { cwd: workspace });
+        // Compare HEAD (current PR branch) with base branch
+        const result = await utilsKustomize.exec(`git diff --name-only "origin/${baseBranchName}...HEAD"`, [], { cwd: workspace });
+        return findKustomizeDirsFromChangedFiles(result.stdout, pathGitRepository);
+    }
+    catch (error) {
+        console.error('Failed to detect changed Kustomize projects:', error);
+        return new Set();
+    }
+}
+/**
+ * Helper function to find kustomize project directories from a list of changed files
+ */
+function findKustomizeDirsFromChangedFiles(changedFilesOutput, pathGitRepository) {
+    const changedFiles = changedFilesOutput.split('\n').filter(f => f.trim() !== '');
+    console.log(`Found ${changedFiles.length} changed file(s)`);
+    const changedKustomizeDirs = new Set();
+    for (const filePath of changedFiles) {
+        // Check if this is a kustomization.yaml or kustomization.yml file being deleted
+        if (filePath.endsWith(constants.KustomizeFiles.KustomizationYaml) || filePath.endsWith(constants.KustomizeFiles.KustomizationYml)) {
+            // For deleted kustomization files, extract the directory path directly
+            const kustomizeDir = path.dirname(filePath);
+            changedKustomizeDirs.add(path.resolve(path.format(pathGitRepository), kustomizeDir));
+            console.log(`Detected deleted/modified kustomize project: ${kustomizeDir}`);
+            continue;
+        }
+        // For other files, walk up to find kustomization.yaml or kustomization.yml in current filesystem
+        const kustomizeDirYaml = isFileFoundInPath(constants.KustomizeFiles.KustomizationYaml, path.parse(filePath), pathGitRepository);
+        const kustomizeDirYml = isFileFoundInPath(constants.KustomizeFiles.KustomizationYml, path.parse(filePath), pathGitRepository);
+        if (kustomizeDirYaml !== false) {
+            changedKustomizeDirs.add(String(kustomizeDirYaml));
+            console.log(`Detected change in kustomize project directory: ${kustomizeDirYaml}`);
+        }
+        else if (kustomizeDirYml !== false) {
+            changedKustomizeDirs.add(String(kustomizeDirYml));
+            console.log(`Detected change in kustomize project directory: ${kustomizeDirYml}`);
+        }
+    }
+    return changedKustomizeDirs;
 }
 const removeDuplicatesFromStringArray = (arr) => {
     let unique = arr.reduce(function (acc, curr) {
@@ -58543,16 +58656,29 @@ class HelmChart {
     }
     /**
      * template
+     * @param ignoreWarnings - Array of regex patterns to ignore in stderr. Default pattern for deprecated chart warning is always included.
      */
-    async template(dir, valueFiles, options) {
+    async template(dir, valueFiles, options, ignoreWarnings) {
         let cmdOptions = '';
         if (options !== undefined) {
             cmdOptions = options?.join(' ');
         }
         let cmdExec = 'helm template helm-release-name "' + path.format(dir) + '" ' + valueFiles + ' ' + cmdOptions;
         let result = await this.exec(cmdExec);
-        if (result.stderr && result.stderr.trim() !== 'WARNING: This chart is deprecated') {
-            throw new Error('Helm Chart ' + path.format(dir) + ' is deprecated! stderr: ' + result.stderr);
+        // Default patterns that are always ignored (backward compatible)
+        const defaultPatterns = ['^WARNING: This chart is deprecated$'];
+        const patterns = ignoreWarnings ? [...defaultPatterns, ...ignoreWarnings] : defaultPatterns;
+        if (result.stderr && result.stderr.trim() !== '') {
+            const stderrLines = result.stderr
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line !== '');
+            for (const line of stderrLines) {
+                const isIgnored = patterns.some(pattern => new RegExp(pattern).test(line));
+                if (!isIgnored) {
+                    throw new Error(`Helm Chart ${path.format(dir)} templating produced unexpected stderr: ${result.stderr}`);
+                }
+            }
         }
         if (result.stdout.length === 0 || result.stdout.length === 1 || result.stdout.length < 50 || result.stdout === null || result.stdout == '' || result.stdout == ' ') {
             throw new Error('Helm Chart ' + path.format(dir) + ' Templating failed with empty manifest!\n' + result.stdout + result.stderr);
@@ -58618,6 +58744,31 @@ class HelmChart {
             return false;
         }
         return featureSection;
+    }
+    /**
+     * Reads the ignoreWarnings configuration from a pipeline section.
+     * @param dir - The directory containing the .ci.config.yaml file.
+     * @param functionName - The name of the pipeline section (e.g., 'helm-chart-validation').
+     * @returns An array of regex patterns to ignore, or undefined if not configured.
+     * @throws Error if ignoreWarnings is set to a boolean instead of an array.
+     */
+    readIgnoreWarnings(dir, functionName) {
+        const configFilePath = path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml);
+        const rawIgnoreWarnings = this.readPipelineFeature(dir, functionName, 'ignoreWarnings');
+        if (rawIgnoreWarnings === false) {
+            return undefined; // Not set, use defaults only
+        }
+        if (typeof rawIgnoreWarnings === 'boolean') {
+            throw new Error(`Invalid configuration in ${configFilePath}: ` +
+                `'ignoreWarnings' must be an array of regex patterns, not a boolean. ` +
+                `Example:\n  ignoreWarnings:\n    - "^walk\\.go:\\d+: found symbolic link in path: .*"`);
+        }
+        // Convert YAML node to plain JS array (handles YAMLSeq from yaml library)
+        const converted = rawIgnoreWarnings && typeof rawIgnoreWarnings.toJSON === 'function' ? rawIgnoreWarnings.toJSON() : rawIgnoreWarnings;
+        if (Array.isArray(converted)) {
+            return converted;
+        }
+        return undefined; // Use defaults only
     }
     readPipelineFeatureOptions(dir, functionName) {
         if (fs.existsSync(path.join(path.format(dir), constants.HelmChartFiles.ciConfigYaml)) == false) {

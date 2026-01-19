@@ -29,9 +29,9 @@ export async function run(): Promise<void> {
       { data: 'Result', header: true },
       { data: 'Folder', header: true }
     ]
-    let summaryRawContent: string = '<details><summary>Found following Helm Charts...</summary>\n\n```yaml\n' + yaml.stringify(helmChartListingYamlDoc) + '\n```\n\n</details>'
 
-    core.summary.addHeading('Helm Chart Manifest Validation Results').addRaw(summaryRawContent)
+    const chartCount = Object.keys(helmChartListingYamlDoc.toJSON()).length
+    core.summary.addHeading('Helm Chart Manifest Validation Results').addRaw(`\n\nProcessing ${chartCount} chart(s) from listing.\n\n`)
 
     // loop through all helm charts and do dependency update
     for (const item of Object.keys(helmChartListingYamlDoc.toJSON())) {
@@ -62,7 +62,10 @@ export async function run(): Promise<void> {
           helmOptions.push('--dependency-update')
         }
 
-        await utilsHelmChart.template(dir, utilsHelmChart.getHelmValueFiles(dir), helmOptions)
+        // Read ignoreWarnings from the section level (not inside options)
+        const ignoreWarnings = utilsHelmChart.readIgnoreWarnings(dir, constants.Functionality.helmChartValidation)
+
+        await utilsHelmChart.template(dir, utilsHelmChart.getHelmValueFiles(dir), helmOptions, ignoreWarnings)
         tableRows.push([item, '✅', listingYamlRelativePath])
       } else {
         tableRows.push([item, ':heavy_exclamation_mark:', listingYamlRelativePath])
