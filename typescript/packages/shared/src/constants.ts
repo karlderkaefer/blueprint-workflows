@@ -48,6 +48,7 @@ export const Functionality = {
   helmChartValidation: 'helm-chart-validation',
   helmChartVersionBump: 'helm-chart-version-bump',
   helmChartDependencyUpdate: 'helm-chart-dependency-update',
+  helmChartTest: 'helm-chart-test',
   k8sManifestTemplating: 'k8s-manifest-templating',
   kustomizeListing: 'kustomize-listing',
   kustomizeVersionBump: 'kustomize-version-bump'

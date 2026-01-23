@@ -41,6 +41,7 @@ export declare const Functionality: {
     helmChartValidation: string;
     helmChartVersionBump: string;
     helmChartDependencyUpdate: string;
+    helmChartTest: string;
     k8sManifestTemplating: string;
     kustomizeListing: string;
     kustomizeVersionBump: string;

@@ -1,0 +1,11 @@
+name: 'Helm Test'
+description: 'Runs helm unittest for every Helm Chart'
+
+# Add your action's branding here. This will appear on the GitHub Marketplace.
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+runs:
+  using: node20
+  main: ../../../../typescript/packages/helm-chart/helm-test/dist/index.js
