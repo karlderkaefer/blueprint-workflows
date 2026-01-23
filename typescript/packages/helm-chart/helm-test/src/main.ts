@@ -110,7 +110,7 @@ export async function run(): Promise<void> {
 
     // Process all charts in parallel
     const results = await Promise.all(
-      chartKeys.map(async (item) => {
+      chartKeys.map(async item => {
         return await processChart(item, helmChartListingYamlDoc, utilsHelmChart, outputDir)
       })
     )
@@ -122,7 +122,7 @@ export async function run(): Promise<void> {
       { data: 'Folder', header: true }
     ]
 
-    const tableRows = results.map((result) => {
+    const tableRows = results.map(result => {
       let statusIcon: string
       switch (result.status) {
         case 'passed':
@@ -142,10 +142,10 @@ export async function run(): Promise<void> {
     })
 
     // Check for any failures
-    const failedResults = results.filter((r) => r.status === 'failed')
-    const passedResults = results.filter((r) => r.status === 'passed')
-    const skippedResults = results.filter((r) => r.status === 'skipped')
-    const disabledResults = results.filter((r) => r.status === 'disabled')
+    const failedResults = results.filter(r => r.status === 'failed')
+    const passedResults = results.filter(r => r.status === 'passed')
+    const skippedResults = results.filter(r => r.status === 'skipped')
+    const disabledResults = results.filter(r => r.status === 'disabled')
 
     // Write GitHub summary
     await core.summary
@@ -170,7 +170,7 @@ export async function run(): Promise<void> {
 
     // Fail the action if any tests failed
     if (failedResults.length > 0) {
-      const failedCharts = failedResults.map((r) => r.chart).join(', ')
+      const failedCharts = failedResults.map(r => r.chart).join(', ')
       core.setFailed(`Helm tests failed for: ${failedCharts}`)
     }
   } catch (error) {

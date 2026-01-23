@@ -55450,6 +55450,7 @@ exports.Functionality = {
     helmChartValidation: 'helm-chart-validation',
     helmChartVersionBump: 'helm-chart-version-bump',
     helmChartDependencyUpdate: 'helm-chart-dependency-update',
+    helmChartTest: 'helm-chart-test',
     k8sManifestTemplating: 'k8s-manifest-templating',
     kustomizeListing: 'kustomize-listing',
     kustomizeVersionBump: 'kustomize-version-bump'
@@ -56006,6 +56007,53 @@ class HelmChart {
             throw new Error(this.lint.name + '() exitCode: ' + result.exitCode + ' stdErr: ' + result.stderr);
         }
         return result.stdout;
+    }
+    /**
+     * Run helm unittest on a Helm chart
+     * @param dir - The directory of the Helm chart
+     * @param outputDir - Directory for test output files
+     * @param options - Additional options to pass to helm unittest
+     * @returns The exec output containing exitCode, stdout, stderr
+     */
+    async unittest(dir, outputDir, options) {
+        const chartDir = path.format(dir);
+        const testsDir = path.join(chartDir, 'tests');
+        // Check if tests directory exists
+        if (!fs.existsSync(testsDir)) {
+            return {
+                exitCode: -1,
+                stdout: '',
+                stderr: 'No tests directory found'
+            };
+        }
+        // Read Chart.yaml to detect apiVersion
+        const chartYamlPath = path.join(chartDir, constants.HelmChartFiles.Chartyaml);
+        let apiVersion = 'v2'; // Default to v2
+        if (fs.existsSync(chartYamlPath)) {
+            const chartYamlContent = fs.readFileSync(chartYamlPath, { encoding: 'utf8' });
+            const chartYaml = yaml.parse(chartYamlContent);
+            if (chartYaml && chartYaml.apiVersion) {
+                apiVersion = chartYaml.apiVersion;
+            }
+        }
+        // Build command arguments
+        const args = [];
+        // Add --helm3 flag for apiVersion v2+
+        if (apiVersion !== 'v1') {
+            args.push('--helm3');
+        }
+        // Add output options
+        args.push('-o', outputDir);
+        args.push('-t', 'JUnit');
+        // Add any additional options
+        if (options !== undefined) {
+            args.push(...options);
+        }
+        // Add chart directory (current directory)
+        args.push('.');
+        const cmdExec = 'helm unittest ' + args.join(' ');
+        const result = await this.exec(cmdExec, [], { cwd: chartDir });
+        return result;
     }
     /**
      * Reads a specific feature section from a YAML configuration file for a given function name and feature name.

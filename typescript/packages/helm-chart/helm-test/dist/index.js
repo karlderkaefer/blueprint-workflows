@@ -66758,7 +66758,7 @@ exports.visitAsync = visitAsync;
 
 /***/ }),
 
-/***/ 9407:
+/***/ 1730:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -66798,139 +66798,139 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.run = run;
-/**
- * The entrypoint for the action.
- */
 const core = __importStar(__nccwpck_require__(7484));
-const fs = __importStar(__nccwpck_require__(9896));
+const dist_1 = __nccwpck_require__(4494);
 const path = __importStar(__nccwpck_require__(6928));
 const yaml = __importStar(__nccwpck_require__(8815));
-const util = __importStar(__nccwpck_require__(9023));
-const dist_1 = __nccwpck_require__(4494);
+/**
+ * Process a single Helm chart for unittest
+ */
+async function processChart(item, 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+helmChartListingYamlDoc, utilsHelmChart, outputDir) {
+    const yamlitem = dist_1.utils.unrapYamlbyKey(helmChartListingYamlDoc, item);
+    const listingYamlDir = dist_1.utils.unrapYamlbyKey(yamlitem, dist_1.constants.ListingYamlKeys.dir);
+    const listingYamlRelativePath = dist_1.utils.unrapYamlbyKey(yamlitem, dist_1.constants.ListingYamlKeys.relativePath);
+    const dir = path.parse(listingYamlDir);
+    // Check if helm-chart-test is enabled via .ci.config.yaml
+    if (!dist_1.utils.isFunctionEnabled(dir, dist_1.constants.Functionality.helmChartTest, true)) {
+        return {
+            chart: item,
+            status: 'disabled',
+            reason: 'Disabled by .ci.config.yaml',
+            relativePath: listingYamlRelativePath
+        };
+    }
+    // Get options from .ci.config.yaml if present
+    const options = [];
+    const pipelineOptions = utilsHelmChart.readPipelineFeatureOptions(dir, dist_1.constants.Functionality.helmChartTest);
+    if (pipelineOptions !== false) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const optionsDoc = new yaml.Document(pipelineOptions);
+        if (dist_1.utils.unrapYamlbyKey(optionsDoc, '--update-snapshot', false)) {
+            options.push('--update-snapshot');
+        }
+    }
+    // Run helm unittest
+    const chartOutputDir = path.join(outputDir, item);
+    const result = await utilsHelmChart.unittest(dir, chartOutputDir, options);
+    // Check for no tests directory (exitCode -1 is our custom code)
+    if (result.exitCode === -1 && result.stderr === 'No tests directory found') {
+        return {
+            chart: item,
+            status: 'skipped',
+            reason: 'No tests directory',
+            relativePath: listingYamlRelativePath
+        };
+    }
+    // Check if tests passed or failed
+    if (result.exitCode === 0) {
+        return {
+            chart: item,
+            status: 'passed',
+            relativePath: listingYamlRelativePath
+        };
+    }
+    return {
+        chart: item,
+        status: 'failed',
+        reason: result.stderr || result.stdout || 'Unknown error',
+        relativePath: listingYamlRelativePath
+    };
+}
 /**
  * The main function for the action.
  * @returns {Promise<void>} Resolves when the action is complete.
  */
 async function run() {
     try {
-        ///////////////////////////////////////////////////////////////////////////////////////////////////
-        // Specify the directory to start searching from
-        //const GITHUB_WORKSPACE: string = core.getInput(constants.github.inputGitRepositoryFolder)
-        const GITHUB_WORKSPACE = process.env[dist_1.constants.envvars.GITHUB_WORKSPACE]?.toString();
-        if (GITHUB_WORKSPACE === null) {
-            core.setFailed(util.format(dist_1.constants.ErrorMsgs.missingEnv, dist_1.constants.envvars.GITHUB_WORKSPACE));
-            return;
-        }
-        if (GITHUB_WORKSPACE === null || GITHUB_WORKSPACE == '' || GITHUB_WORKSPACE == undefined) {
-            core.setFailed(util.format(dist_1.constants.ErrorMsgs.missingEnv, dist_1.constants.envvars.GITHUB_WORKSPACE));
-            return;
-        }
-        const startDir = path.resolve(GITHUB_WORKSPACE);
-        const LIST_CHANGED_ONLY = String(process.env.INPUT_LIST_CHANGED_ONLY || 'false').toLowerCase() === 'true';
-        const BRANCH_NAME = process.env.INPUT_BRANCH_NAME;
-        const BASE_BRANCH_NAME = process.env.INPUT_BASE_BRANCH_NAME || 'main';
-        core.startGroup(util.format(dist_1.constants.Msgs.KustomizeListingFolderContaining, dist_1.constants.KustomizeFiles.KustomizationYaml));
-        // List all directories containing "kustomization.yaml" or "kustomization.yml"
-        // https://github.com/actions/toolkit/tree/main/packages/glob
-        const kustomizationYamlDirs = dist_1.utils.lookup(startDir, dist_1.constants.KustomizeFiles.KustomizationYaml);
-        const kustomizationYmlDirs = dist_1.utils.lookup(startDir, dist_1.constants.KustomizeFiles.KustomizationYml);
-        // Combine both results and remove duplicates
-        const allKustomizeDirs = [...new Set([...kustomizationYamlDirs, ...kustomizationYmlDirs])];
-        // Filter out kustomization files that are part of Helm charts
-        const kustomizeDirs = allKustomizeDirs.filter(kustomizeDir => {
-            // Check if this kustomization file is in a templates directory or subdirectory of templates
-            let currentPath = kustomizeDir;
-            let foundInHelmChartDir = false;
-            // Walk up the directory tree from the kustomization file location
-            while (currentPath !== startDir && currentPath !== path.dirname(currentPath)) {
-                const currentBaseName = path.basename(currentPath);
-                // If we find a directory named "templates" in the path
-                if (currentBaseName === 'templates') {
-                    // Check if any parent directory has Chart.yaml
-                    let searchPath = path.dirname(currentPath);
-                    //while (searchPath !== startDir && searchPath !== path.dirname(searchPath)) {
-                    const chartYamlPath = path.join(searchPath, dist_1.constants.HelmChartFiles.Chartyaml);
-                    if (fs.existsSync(chartYamlPath)) {
-                        foundInHelmChartDir = true;
-                        break;
-                    }
-                    //  searchPath = path.dirname(searchPath)
-                    //}
-                    // if (foundTemplatesDir) {
-                    //   break
-                    // }
-                }
-                currentPath = path.dirname(currentPath);
+        // Get GITHUB_WORKSPACE from environment
+        const GITHUB_WORKSPACE = String(process.env[dist_1.constants.envvars.GITHUB_WORKSPACE]);
+        dist_1.utils.assertNullOrEmpty(GITHUB_WORKSPACE, 'Missing env `' + dist_1.constants.envvars.GITHUB_WORKSPACE + '`!');
+        const pathGitRepository = path.parse(GITHUB_WORKSPACE);
+        const utilsHelmChart = dist_1.utils.HelmChart.getInstance();
+        // Load helm chart listing
+        const helmChartListingFileContent = utilsHelmChart.getListingFileContent(pathGitRepository);
+        const helmChartListingYamlDoc = new yaml.Document(yaml.parse(helmChartListingFileContent));
+        // Output directory for test results
+        const outputDir = path.join(GITHUB_WORKSPACE, '.helm-test-output');
+        core.startGroup('Helm Chart Unit Testing');
+        // Get all chart keys
+        const chartKeys = Object.keys(helmChartListingYamlDoc.toJSON());
+        const chartCount = chartKeys.length;
+        core.info(`Processing ${chartCount} chart(s) from listing.`);
+        // Process all charts in parallel
+        const results = await Promise.all(chartKeys.map(async (item) => {
+            return await processChart(item, helmChartListingYamlDoc, utilsHelmChart, outputDir);
+        }));
+        // Build summary table
+        const tableHeader = [
+            { data: 'UID Helm Chart', header: true },
+            { data: 'Result', header: true },
+            { data: 'Folder', header: true }
+        ];
+        const tableRows = results.map(result => {
+            let statusIcon;
+            switch (result.status) {
+                case 'passed':
+                    statusIcon = '\u2705'; // checkmark
+                    break;
+                case 'failed':
+                    statusIcon = '\u274c'; // X
+                    break;
+                case 'skipped':
+                    statusIcon = '\u23ed\ufe0f'; // skip
+                    break;
+                case 'disabled':
+                    statusIcon = ':heavy_exclamation_mark:';
+                    break;
             }
-            // If we found a Helm chart templates directory, exclude this kustomization file
-            if (foundInHelmChartDir) {
-                core.debug(`Excluding kustomization file in Helm chart templates: ${kustomizeDir}`);
-                return false;
-            }
-            return true;
+            return [result.chart, statusIcon, result.relativePath];
         });
-        core.debug('All directories containing kustomization files:' + allKustomizeDirs.map((item) => `\n- ${item}`));
-        core.debug('Filtered directories (excluding Helm chart templates):' + kustomizeDirs.map((item) => `\n- ${item}`));
-        core.info(`Found ${kustomizeDirs.length} total Kustomize project(s)`);
-        // Detect changed kustomize directories if filtering is enabled
-        let changedKustomizeDirs = null;
-        if (LIST_CHANGED_ONLY) {
-            const pathGitRepository = path.parse(GITHUB_WORKSPACE);
-            changedKustomizeDirs = await dist_1.utils.detectChangedKustomizeDirs(pathGitRepository, BRANCH_NAME, BASE_BRANCH_NAME);
-            core.info(`Detected ${changedKustomizeDirs.size} changed kustomize project(s)`);
-        }
+        // Check for any failures
+        const failedResults = results.filter(r => r.status === 'failed');
+        const passedResults = results.filter(r => r.status === 'passed');
+        const skippedResults = results.filter(r => r.status === 'skipped');
+        const disabledResults = results.filter(r => r.status === 'disabled');
+        // Write GitHub summary
+        await core.summary
+            .addHeading('Helm Chart Test Results')
+            .addRaw(`\n\nProcessed ${chartCount} chart(s).\n\n`)
+            .addTable([tableHeader, ...tableRows])
+            .addBreak()
+            .addDetails('Legend', '\u2705 = Tests passed\n' +
+            '\u274c = Tests failed\n' +
+            '\u23ed\ufe0f = Skipped (no tests directory)\n' +
+            ':heavy_exclamation_mark: = Disabled by ' +
+            dist_1.constants.HelmChartFiles.ciConfigYaml)
+            .write();
         core.endGroup();
-        core.startGroup(util.format(dist_1.constants.Msgs.KustomizeListingFolderContaining, 'kustomization files'));
-        const kustomizeListingYamlDoc = new yaml.Document({});
-        kustomizeListingYamlDoc.commentBefore = ' Kustomize Listing Document which contains all found Kustomize projects with kustomization.yaml or kustomization.yml';
-        for (const kustomizeDir of kustomizeDirs) {
-            // Skip if filtering is enabled and this project wasn't changed
-            if (LIST_CHANGED_ONLY && changedKustomizeDirs && !changedKustomizeDirs.has(kustomizeDir)) {
-                continue;
-            }
-            // Check which kustomization file exists (yaml or yml)
-            let kustomizationFile = dist_1.constants.KustomizeFiles.KustomizationYaml;
-            let kustomizationPath = path.join(kustomizeDir, dist_1.constants.KustomizeFiles.KustomizationYaml);
-            if (!fs.existsSync(kustomizationPath)) {
-                kustomizationFile = dist_1.constants.KustomizeFiles.KustomizationYml;
-                kustomizationPath = path.join(kustomizeDir, dist_1.constants.KustomizeFiles.KustomizationYml);
-            }
-            let kustomizationFileContent = fs.readFileSync(kustomizationPath, {
-                encoding: 'utf8'
-            });
-            let kustomizationFileDoc = yaml.parseDocument(kustomizationFileContent);
-            let projectName = path.basename(kustomizeDir);
-            // Ensure projectName is a string
-            const projectNameStr = String(projectName);
-            // Create a unique key by using the relative path with slashes replaced by underscores
-            // This prevents duplicate keys when multiple projects have the same folder name
-            const relativePath = path.relative(GITHUB_WORKSPACE, kustomizeDir);
-            let kustomizeListingYamlDocKeyValue = relativePath.replace(/[\/\\]/g, '_').replace(/[^a-zA-Z0-9_-]/g, '_');
-            // Ensure the key doesn't start with a number (YAML requirement)
-            if (/^\d/.test(kustomizeListingYamlDocKeyValue)) {
-                kustomizeListingYamlDocKeyValue = 'kustomize_' + kustomizeListingYamlDocKeyValue;
-            }
-            let kustomizeListingYamlItem = kustomizeListingYamlDoc.createPair(kustomizeListingYamlDocKeyValue, {
-                dir: kustomizeDir,
-                name: projectNameStr,
-                folderName: path.basename(kustomizeDir),
-                relativePath: path.relative(GITHUB_WORKSPACE, kustomizeDir),
-                manifestPath: path.dirname(path.relative(GITHUB_WORKSPACE, kustomizeDir)),
-                kustomizationFile: kustomizationFile
-            });
-            kustomizeListingYamlDoc.add(kustomizeListingYamlItem);
-        }
-        core.endGroup();
-        core.startGroup(dist_1.constants.Msgs.KustomizeListingFileYamlContent);
-        core.debug(yaml.stringify(kustomizeListingYamlDoc));
-        core.endGroup();
-        fs.writeFileSync(GITHUB_WORKSPACE + '/' + dist_1.constants.KustomizeFiles.listingFile, yaml.stringify(kustomizeListingYamlDoc), {
-            flag: 'w'
-        });
-        core.notice(util.format(dist_1.constants.Msgs.KustomizeListingFileWritten, dist_1.constants.KustomizeFiles.listingFile));
-        let summaryRawContent = '<details><summary>Found following Kustomize projects...</summary>\n\n```yaml\n' + yaml.stringify(kustomizeListingYamlDoc) + '\n```\n\n</details>';
-        if (process.env.JEST_WORKER_ID == undefined) {
-            await core.summary.addHeading('Kustomize Listing Results').addRaw(summaryRawContent).write();
+        // Log summary
+        core.info(`Summary: ${passedResults.length} passed, ${failedResults.length} failed, ${skippedResults.length} skipped, ${disabledResults.length} disabled`);
+        // Fail the action if any tests failed
+        if (failedResults.length > 0) {
+            const failedCharts = failedResults.map(r => r.chart).join(', ');
+            core.setFailed(`Helm tests failed for: ${failedCharts}`);
         }
     }
     catch (error) {
@@ -66939,8 +66939,6 @@ async function run() {
             core.setFailed(error.message);
     }
 }
-// eslint-disable-next-line @typescript-eslint/no-floating-promises
-run();
 
 
 /***/ }),
@@ -68893,7 +68891,7 @@ function composeCollection(CN, ctx, token, props, onError) {
     let tag = ctx.schema.tags.find(t => t.tag === tagName && t.collection === expType);
     if (!tag) {
         const kt = ctx.schema.knownTags[tagName];
-        if (kt && kt.collection === expType) {
+        if (kt?.collection === expType) {
             ctx.schema.tags.push(Object.assign({}, kt, { default: false }));
             tag = kt;
         }
@@ -69779,7 +69777,7 @@ function resolveBlockSeq({ composeNode, composeEmptyNode }, ctx, bs, onError, ta
         });
         if (!props.found) {
             if (props.anchor || props.tag || value) {
-                if (value && value.type === 'block-seq')
+                if (value?.type === 'block-seq')
                     onError(props.end, 'BAD_INDENT', 'All sequence items must start at the same column');
                 else
                     onError(offset, 'MISSING_CHAR', 'Sequence item without - indicator');
@@ -69996,7 +69994,7 @@ function resolveFlowCollection({ composeNode, composeEmptyNode }, ctx, fc, onErr
                 }
             }
             else if (value) {
-                if ('source' in value && value.source && value.source[0] === ':')
+                if ('source' in value && value.source?.[0] === ':')
                     onError(value, 'MISSING_CHAR', `Missing space after : in ${fcName}`);
                 else
                     onError(valueProps.start, 'MISSING_CHAR', `Missing , or : between ${fcName} items`);
@@ -70040,7 +70038,7 @@ function resolveFlowCollection({ composeNode, composeEmptyNode }, ctx, fc, onErr
     const expectedEnd = isMap ? '}' : ']';
     const [ce, ...ee] = fc.end;
     let cePos = offset;
-    if (ce && ce.source === expectedEnd)
+    if (ce?.source === expectedEnd)
         cePos = ce.offset + ce.source.length;
     else {
         const name = fcName[0].toUpperCase() + fcName.substring(1);
@@ -71421,7 +71419,7 @@ const prettifyError = (src, lc) => (error) => {
     if (/[^ ]/.test(lineStr)) {
         let count = 1;
         const end = error.linePos[1];
-        if (end && end.line === line && end.col > col) {
+        if (end?.line === line && end.col > col) {
             count = Math.max(1, Math.min(end.col - col, 80 - ci));
         }
         const pointer = ' '.repeat(ci) + '^'.repeat(count);
@@ -71589,7 +71587,7 @@ class Alias extends Node.NodeBase {
             data = anchors.get(source);
         }
         /* istanbul ignore if */
-        if (!data || data.res === undefined) {
+        if (data?.res === undefined) {
             const msg = 'This should not happen: Alias anchor was not resolved?';
             throw new ReferenceError(msg);
         }
@@ -73931,7 +73929,7 @@ class Parser {
     }
     *step() {
         const top = this.peek(1);
-        if (this.type === 'doc-end' && (!top || top.type !== 'doc-end')) {
+        if (this.type === 'doc-end' && top?.type !== 'doc-end') {
             while (this.stack.length > 0)
                 yield* this.pop();
             this.stack.push({
@@ -74463,7 +74461,7 @@ class Parser {
             do {
                 yield* this.pop();
                 top = this.peek(1);
-            } while (top && top.type === 'flow-collection');
+            } while (top?.type === 'flow-collection');
         }
         else if (fc.end.length === 0) {
             switch (this.type) {
@@ -76649,7 +76647,7 @@ function stringifyNumber({ format, minFractionDigits, tag, value }) {
     const num = typeof value === 'number' ? value : Number(value);
     if (!isFinite(num))
         return isNaN(num) ? '.nan' : num < 0 ? '-.inf' : '.inf';
-    let n = JSON.stringify(value);
+    let n = Object.is(value, -0) ? '-0' : JSON.stringify(value);
     if (!format &&
         minFractionDigits &&
         (!tag || tag === 'tag:yaml.org,2002:float') &&
@@ -76780,7 +76778,7 @@ function stringifyPair({ key, value }, ctx, onComment, onChompKeep) {
             ws += `\n${stringifyComment.indentComment(cs, ctx.indent)}`;
         }
         if (valueStr === '' && !ctx.inFlow) {
-            if (ws === '\n')
+            if (ws === '\n' && valueComment)
                 ws = '\n\n';
         }
         else {
@@ -77459,13 +77457,23 @@ exports.visitAsync = visitAsync;
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
 /******/ 	
 /************************************************************************/
-/******/ 	
-/******/ 	// startup
-/******/ 	// Load entry module and return exports
-/******/ 	// This entry module is referenced by other modules so it can't be inlined
-/******/ 	var __webpack_exports__ = __nccwpck_require__(9407);
-/******/ 	module.exports = __webpack_exports__;
-/******/ 	
+var __webpack_exports__ = {};
+// This entry need to be wrapped in an IIFE because it need to be in strict mode.
+(() => {
+"use strict";
+var exports = __webpack_exports__;
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+/**
+ * The entrypoint for the action.
+ */
+const main_1 = __nccwpck_require__(1730);
+// eslint-disable-next-line @typescript-eslint/no-floating-promises
+(0, main_1.run)();
+
+})();
+
+module.exports = __webpack_exports__;
 /******/ })()
 ;
 //# sourceMappingURL=index.js.map
