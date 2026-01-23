@@ -64,6 +64,14 @@ export declare class HelmChart {
     DependencyUpdate(dir: path.ParsedPath): Promise<string>;
     lint(dir: path.ParsedPath, options?: string[]): Promise<string>;
     /**
+     * Run helm unittest on a Helm chart
+     * @param dir - The directory of the Helm chart
+     * @param outputDir - Directory for test output files
+     * @param options - Additional options to pass to helm unittest
+     * @returns The exec output containing exitCode, stdout, stderr
+     */
+    unittest(dir: path.ParsedPath, outputDir: string, options?: string[]): Promise<exec2.ExecOutput>;
+    /**
      * Reads a specific feature section from a YAML configuration file for a given function name and feature name.
      * @param dir - Directory path as a path.FormatInputPathObject.
      * @param functionName - The name of the function section in the YAML.
